@@ -8,5 +8,5 @@ export type Message = {
 export type Conversation = {
     id: string;
     title: string;
-    userId:String
+    userId: string;
 };

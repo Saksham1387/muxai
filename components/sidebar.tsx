@@ -12,32 +12,46 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { Plus, Search, LogOut } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { NavUser } from './nav-user'
+import { trpc } from '@/server/client-trpc'
 
 interface Conversation {
   id: string
   title: string
-  timestamp: Date
+  createdAt: Date
 }
 
 interface SidebarProps {
-  conversations: Conversation[]
   activeConversation: string | null
   onSelectConversation: (id: string) => void
-  onNewChat: () => void
 }
 
 export function AppSidebar({
-  conversations,
   activeConversation,
   onSelectConversation,
-  onNewChat,
 }: SidebarProps) {
+  const { data: session } = useSession()
   const [searchQuery, setSearchQuery] = useState('')
+
+  const { data: conversations = [], isLoading } = trpc.conversation.getAllConversations.useQuery()
+  const createConversation = trpc.conversation.createConversation.useMutation()
 
   const filteredConversations = conversations.filter(conv =>
     conv.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  const handleNewChat = async () => {
+    try {
+      const result = await createConversation.mutateAsync({
+        title: 'New Chat'
+      })
+      onSelectConversation(result.id)
+    } catch (error) {
+      console.error('Failed to create conversation:', error)
+    }
+  }
 
   return (
     <Sidebar>
@@ -51,7 +65,8 @@ export function AppSidebar({
         {/* New Chat Button */}
         <div className="p-2">
           <Button
-            onClick={onNewChat}
+            onClick={handleNewChat}
+            disabled={createConversation.isPending}
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -89,9 +104,6 @@ export function AppSidebar({
                   >
                     <div className="flex-1 text-left">
                       <div className="truncate font-medium">{conv.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {conv.timestamp.toLocaleDateString()}
-                      </div>
                     </div>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -102,13 +114,24 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="p-2">
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
-        >
-          <LogOut className="w-4 h-4 mr-2" />
-          Login
-        </Button>
+        {session?.user ? (
+          <NavUser 
+            user={{
+              name:session.user?.name!,
+              avatar:session.user?.image!,
+              email:session.user?.email!
+            }}
+          />
+        ) : (
+          <Button
+            variant="ghost"
+            className="w-full justify-start"
+            onClick={() => window.location.href = '/auth'}
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Login
+          </Button>
+        )}
       </SidebarFooter>
     </Sidebar>
   )

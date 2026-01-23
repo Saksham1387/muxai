@@ -2,6 +2,7 @@
 import { trpc } from '@/server/client-trpc';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { httpBatchLink } from '@trpc/client';
+import { SessionProvider } from 'next-auth/react';
 import { useState } from 'react';
 
 import superjson from 'superjson';
@@ -29,7 +30,9 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
+        <SessionProvider>
         {children}
+        </SessionProvider>
       </QueryClientProvider>
     </trpc.Provider>
   );
