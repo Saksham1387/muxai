@@ -3,14 +3,14 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
+import { TRPCProvider } from "@/components/providers/trpc-provider"
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'T3.chat - Multi-Model AI Chat',
+  title: 'Muxai',
   description: 'Chat with multiple AI models including GPT-4, Claude, and Gemini',
-  generator: 'v0.app',
   icons: {
     icon: [
       {
@@ -38,8 +38,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
-        {children}
-        <Analytics />
+        <TRPCProvider>
+          {children}
+          <Analytics />
+        </TRPCProvider>
       </body>
     </html>
   )
