@@ -2,7 +2,6 @@
 
 import { useChat } from '@ai-sdk/react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   DropdownMenu,
@@ -10,8 +9,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Send, ChevronDown, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { Send, ChevronDown, Sparkles, RibbonIcon } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { trpc } from '@/server/client-trpc'
+import Image from 'next/image'
+import { useSession } from 'next-auth/react'
 
 export const SUPPORTED_MODELS = [
   {provider:'openai', name: "OpenAI", models:[
@@ -39,10 +41,54 @@ export function Chat({ conversationId, onNewConversation }: ChatProps) {
   const [selectedModel, setSelectedModel] = useState(SUPPORTED_MODELS[0].models[0])
   const [input, setInput] = useState('')
   const [isFirstMessage, setIsFirstMessage] = useState(true)
+  const {data:session} = useSession()
+  const { data: conversationWithMessages, isLoading } = trpc.conversation.getById.useQuery(
+    { id: conversationId },
+    { enabled: !!conversationId && conversationId !== 'new' }
+  )
 
-  const { messages, sendMessage } = useChat()
+  const createMessage = trpc.message.createMessage.useMutation()
 
-  const handleSendMessage = (text: string) => {
+  const { messages, setMessages, sendMessage } = useChat({
+    onFinish: (message) => {
+      console.log(message)
+      const textContent = message.message.parts
+        .filter(part => part.type === 'text')
+        .map(part => part.text)
+        .join('')
+      
+      createMessage.mutateAsync({
+        content: textContent,
+        role: 'assistant',
+        model: selectedModel.id,
+        conversationId
+      })
+    }
+  })
+
+  // Load conversation messages when conversation changes
+  useEffect(() => {
+    console.log('Debug - conversationId:', conversationId)
+    console.log('Debug - conversationWithMessages:', conversationWithMessages)
+    
+    if (conversationWithMessages?.messages) {
+      console.log('Debug - raw messages:', conversationWithMessages.messages)
+      const formattedMessages = conversationWithMessages.messages.map(msg => ({
+        id: msg.id,
+        role: msg.role.toLowerCase() as 'user' | 'assistant',
+        content: msg.content,
+        parts: [{ type: 'text' as const, text: msg.content }]
+      }))
+      console.log('Debug - formattedMessages:', formattedMessages)
+      setMessages(formattedMessages)
+      setIsFirstMessage(conversationWithMessages.messages.length === 0)
+    } else if (conversationId === 'new') {
+      setMessages([])
+      setIsFirstMessage(true)
+    }
+  }, [conversationWithMessages, conversationId, setMessages])
+
+  const handleSendMessage = async (text: string) => {
     if (!text.trim()) return
 
     if (isFirstMessage) {
@@ -50,7 +96,27 @@ export function Chat({ conversationId, onNewConversation }: ChatProps) {
       setIsFirstMessage(false)
     }
 
-    sendMessage({ text })
+    // Save user message to database if we have a valid conversation
+    if (conversationId && conversationId !== 'new') {
+      try {
+        await createMessage.mutateAsync({
+          content: text,
+          role: 'user',
+          model: selectedModel.id,
+          conversationId
+        })
+      } catch (error) {
+        console.error('Failed to save user message:', error)
+      }
+    }
+
+    sendMessage({ 
+      text,
+      metadata: {
+        model: selectedModel.id,
+        conversationId: conversationId
+      }
+    })
 
     setInput('')
   }
@@ -125,12 +191,16 @@ export function Chat({ conversationId, onNewConversation }: ChatProps) {
                   <div
                     className={`max-w-lg px-4 py-3 rounded-lg ${
                       message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'text-primary-foreground'
                         : 'bg-card text-foreground border border-border'
                     }`}
                   >
                     <div className="whitespace-pre-wrap">
-                      {message.role === 'user' ? 'User: ' : 'AI: '}
+                      {message.role === 'user' ? <div>
+                        <Image src={session?.user.image || ""} alt="user-avatar" width={30} height={30} className='rounded-full'/>
+                      </div> : <div>
+                        <RibbonIcon/>
+                        </div>}
                       {message.parts.map((part, i) => {
                         switch (part.type) {
                           case 'text':
@@ -158,7 +228,7 @@ export function Chat({ conversationId, onNewConversation }: ChatProps) {
                 <textarea
                   placeholder="Type your message here..."
                   value={input}
-                  onChange={e => setInput(e.target.value)}
+                  onChange={(e) => setInput(e.target.value)}
                   className="w-full bg-transparent text-foreground placeholder:text-muted-foreground resize-none focus:outline-none min-h-[60px] max-h-[150px]"
                   rows={2}
                 />

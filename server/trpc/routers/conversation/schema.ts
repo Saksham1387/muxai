@@ -7,3 +7,7 @@ export const getByIdSchema = z.object({
 export const createConversation = z.object({
     title: z.string()
 })
+
+export const deleteConversationSchema = z.object({
+    id:z.string()
+})

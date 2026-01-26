@@ -11,9 +11,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import { Plus, Search, LogOut } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { Plus, Search, LogOut, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { NavUser } from './nav-user'
 import { trpc } from '@/server/client-trpc'
 
@@ -25,7 +26,7 @@ interface Conversation {
 
 interface SidebarProps {
   activeConversation: string | null
-  onSelectConversation: (id: string) => void
+  onSelectConversation: (id: string | null) => void
 }
 
 export function AppSidebar({
@@ -33,10 +34,12 @@ export function AppSidebar({
   onSelectConversation,
 }: SidebarProps) {
   const { data: session } = useSession()
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
 
   const { data: conversations = [], isLoading } = trpc.conversation.getAllConversations.useQuery()
   const createConversation = trpc.conversation.createConversation.useMutation()
+  const deleteConversation = trpc.conversation.deleteConversation.useMutation()
 
   const filteredConversations = conversations.filter(conv =>
     conv.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -47,9 +50,28 @@ export function AppSidebar({
       const result = await createConversation.mutateAsync({
         title: 'New Chat'
       })
+      router.push(`/chat/${result.id}`)
       onSelectConversation(result.id)
     } catch (error) {
       console.error('Failed to create conversation:', error)
+    }
+  }
+
+  const handleDeleteConversation = async (e: React.MouseEvent, convId: string) => {
+    e.stopPropagation()
+    
+    if (!confirm('Are you sure you want to delete this conversation?')) {
+      return
+    }
+    
+    try {
+      await deleteConversation.mutateAsync({ id: convId })
+      if (activeConversation === convId) {
+        router.push('/')
+        onSelectConversation(null)
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error)
     }
   }
 
@@ -95,19 +117,29 @@ export function AppSidebar({
                 No conversations yet
               </p>
             ) : (
-              filteredConversations.map(conv => (
-                <SidebarMenuItem key={conv.id}>
-                  <SidebarMenuButton
-                    isActive={activeConversation === conv.id}
-                    onClick={() => onSelectConversation(conv.id)}
-                    className="w-full justify-start"
-                  >
-                    <div className="flex-1 text-left">
-                      <div className="truncate font-medium">{conv.title}</div>
-                    </div>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))
+               filteredConversations.map(conv => (
+                 <SidebarMenuItem key={conv.id}>
+                   <SidebarMenuButton
+                     isActive={activeConversation === conv.id}
+                     onClick={() => {
+                       router.push(`/chat/${conv.id}`)
+                       onSelectConversation(conv.id)
+                     }}
+                     className="w-full justify-between group"
+                   >
+                     <div className="flex-1 text-left">
+                       <div className="truncate font-medium">{conv.title}</div>
+                     </div>
+                     <button
+                       onClick={(e) => handleDeleteConversation(e, conv.id)}
+                       className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded"
+                       disabled={deleteConversation.isPending}
+                     >
+                       <Trash2 className="w-4 h-4 text-red-500" />
+                     </button>
+                   </SidebarMenuButton>
+                 </SidebarMenuItem>
+               ))
             )}
           </SidebarMenu>
         </ScrollArea>

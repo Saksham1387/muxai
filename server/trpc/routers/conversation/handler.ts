@@ -1,17 +1,21 @@
 import { TRPCError } from '@trpc/server';
 import type { Context } from '../../../context';
 import type {
-  Conversation
+  Conversation,
+  ConversationWithMessages
 } from './types';
 
 export async function getConversationByIdHandler(
   input: { id: string },
   ctx: Context
-): Promise<Conversation> {
+): Promise<ConversationWithMessages> {
 
     const conversation = await ctx.db.conversation.findFirst({
         where:{
             id:input.id
+        },
+        include:{
+          messages:true
         }
     })
     
@@ -39,6 +43,37 @@ export async function getAllConversationsHandler(
     }
 
   return conversations;
+}
+
+export async function deleteConversationHandler(
+  input: { id: string },
+  ctx: Context
+): Promise<void> {
+
+  const conversation = await ctx.db.conversation.findFirst({
+    where:{
+      id:input.id
+    }
+  });
+
+  if(!conversation) {
+    throw new TRPCError({
+      code:"NOT_FOUND",
+      message:"Conversation not found"
+    })
+  }
+  if(conversation?.userId != ctx.session.user.id) {
+    throw new TRPCError({
+      code:"BAD_REQUEST",
+      message:"You are not the owner of the conversation"
+    })
+  }
+
+  await ctx.db.conversation.delete({
+    where:{
+      id:conversation.id
+    }
+  })
 }
 
 export async function createConversationHandler(
