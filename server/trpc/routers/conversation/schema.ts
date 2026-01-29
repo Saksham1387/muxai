@@ -11,3 +11,8 @@ export const createConversation = z.object({
 export const deleteConversationSchema = z.object({
     id:z.string()
 })
+
+export const updateConversationTitleSchema = z.object({
+    id: z.string(),
+    title: z.string()
+})

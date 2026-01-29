@@ -97,3 +97,33 @@ export async function createConversationHandler(
 
   return conversation;
 }
+
+export async function updateConversationTitleHandler(
+  input: { id: string; title: string },
+  ctx: Context
+): Promise<Conversation> {
+  const conversation = await ctx.db.conversation.findFirst({
+    where: { id: input.id }
+  });
+
+  if (!conversation) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Conversation not found"
+    });
+  }
+
+  if (conversation.userId !== ctx.session.user.id) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "You are not the owner of the conversation"
+    });
+  }
+
+  const updatedConversation = await ctx.db.conversation.update({
+    where: { id: input.id },
+    data: { title: input.title }
+  });
+
+  return updatedConversation;
+}

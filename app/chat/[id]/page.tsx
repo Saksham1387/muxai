@@ -5,12 +5,14 @@ import { Chat } from '@/components/chat'
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { trpc } from '@/server/client-trpc'
 
 export default function ChatPage() {
   const params = useParams()
   const router = useRouter()
   const conversationId = params.id as string
   const [activeConversation, setActiveConversation] = useState<string | null>(conversationId)
+  const utils = trpc.useUtils()
 
   useEffect(() => {
     setActiveConversation(conversationId)
@@ -24,9 +26,9 @@ export default function ChatPage() {
     }
   }
 
-  const handleNewConversation = (title: string) => {
-    // The conversation creation is handled in the sidebar component
-    // This function is called when a new conversation is created from the chat
+  const handleTitleUpdate = (title: string) => {
+    // Invalidate the conversations query to refresh the sidebar
+    utils.conversation.getAllConversations.invalidate()
   }
 
   return (
@@ -35,20 +37,18 @@ export default function ChatPage() {
         activeConversation={activeConversation}
         onSelectConversation={handleSelectConversation}
       />
-      <SidebarInset>
-        <div className="flex h-screen bg-background">
-          {/* Header with Sidebar Trigger */}
-          <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger />
-          </header>
-          
-          {/* Main Chat Area */}
-          <div className="flex-1 flex flex-col h-screen">
-            <Chat
-              conversationId={conversationId}
-              onNewConversation={handleNewConversation}
-            />
-          </div>
+      <SidebarInset className="flex flex-col h-screen">
+        {/* Header with Sidebar Trigger */}
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger />
+        </header>
+
+        {/* Main Chat Area - fills remaining space */}
+        <div className="flex-1 overflow-hidden">
+          <Chat
+            conversationId={conversationId}
+            onTitleUpdate={handleTitleUpdate}
+          />
         </div>
       </SidebarInset>
     </SidebarProvider>

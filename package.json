@@ -9,6 +9,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.15",
     "@ai-sdk/react": "3.0.50",
     "@auth/prisma-adapter": "^2.11.1",
     "@hookform/resolvers": "^3.10.0",
@@ -27,7 +28,7 @@
     "@radix-ui/react-label": "2.1.1",
     "@radix-ui/react-menubar": "1.1.4",
     "@radix-ui/react-navigation-menu": "1.2.3",
-    "@radix-ui/react-popover": "1.1.4",
+    "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-progress": "1.1.1",
     "@radix-ui/react-radio-group": "1.2.2",
     "@radix-ui/react-scroll-area": "1.2.2",

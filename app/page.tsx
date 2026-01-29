@@ -4,14 +4,15 @@ import { AppSidebar } from '@/components/sidebar'
 import { Chat } from '@/components/chat'
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { useState } from 'react'
+import { trpc } from '@/server/client-trpc'
 
 export default function Home() {
   const [activeConversation, setActiveConversation] = useState<string | null>(null)
+  const utils = trpc.useUtils()
 
-  const handleNewConversation = (title: string) => {
-    // The conversation creation is handled in the sidebar component
-    // This function is called when a new conversation is created from the chat
-    // For the main page, we don't need to do anything special here
+  const handleTitleUpdate = (title: string) => {
+    // Invalidate the conversations query to refresh the sidebar
+    utils.conversation.getAllConversations.invalidate()
   }
 
   return (
@@ -20,20 +21,18 @@ export default function Home() {
         activeConversation={activeConversation}
         onSelectConversation={setActiveConversation}
       />
-      <SidebarInset>
-        <div className="flex h-screen bg-background">
-          {/* Header with Sidebar Trigger */}
-          <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger />
-          </header>
-          
-          {/* Main Chat Area */}
-          <div className="flex-1 flex flex-col h-screen">
-            <Chat
-              conversationId={activeConversation || 'new'}
-              onNewConversation={handleNewConversation}
-            />
-          </div>
+      <SidebarInset className="flex flex-col h-screen">
+        {/* Header with Sidebar Trigger */}
+        <header className="flex h-14 shrink-0 items-center gap-2 px-4">
+          <SidebarTrigger />
+        </header>
+
+        {/* Main Chat Area - fills remaining space */}
+        <div className="flex-1 overflow-hidden">
+          <Chat
+            conversationId={activeConversation || 'new'}
+            onTitleUpdate={handleTitleUpdate}
+          />
         </div>
       </SidebarInset>
     </SidebarProvider>

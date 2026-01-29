@@ -59,11 +59,11 @@ export function AppSidebar({
 
   const handleDeleteConversation = async (e: React.MouseEvent, convId: string) => {
     e.stopPropagation()
-    
+
     if (!confirm('Are you sure you want to delete this conversation?')) {
       return
     }
-    
+
     try {
       await deleteConversation.mutateAsync({ id: convId })
       if (activeConversation === convId) {
@@ -117,29 +117,29 @@ export function AppSidebar({
                 No conversations yet
               </p>
             ) : (
-               filteredConversations.map(conv => (
-                 <SidebarMenuItem key={conv.id}>
-                   <SidebarMenuButton
-                     isActive={activeConversation === conv.id}
-                     onClick={() => {
-                       router.push(`/chat/${conv.id}`)
-                       onSelectConversation(conv.id)
-                     }}
-                     className="w-full justify-between group"
-                   >
-                     <div className="flex-1 text-left">
-                       <div className="truncate font-medium">{conv.title}</div>
-                     </div>
-                     <button
-                       onClick={(e) => handleDeleteConversation(e, conv.id)}
-                       className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded"
-                       disabled={deleteConversation.isPending}
-                     >
-                       <Trash2 className="w-4 h-4 text-red-500" />
-                     </button>
-                   </SidebarMenuButton>
-                 </SidebarMenuItem>
-               ))
+              filteredConversations.map(conv => (
+                <SidebarMenuItem key={conv.id}>
+                  <SidebarMenuButton
+                    isActive={activeConversation === conv.id}
+                    onClick={() => {
+                      router.push(`/chat/${conv.id}`)
+                      onSelectConversation(conv.id)
+                    }}
+                    className="w-full justify-between group"
+                  >
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="truncate font-medium">{conv.title}</div>
+                    </div>
+                    <button
+                      onClick={(e) => handleDeleteConversation(e, conv.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded flex-shrink-0"
+                      disabled={deleteConversation.isPending}
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </button>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))
             )}
           </SidebarMenu>
         </ScrollArea>
@@ -147,11 +147,11 @@ export function AppSidebar({
 
       <SidebarFooter className="p-2">
         {session?.user ? (
-          <NavUser 
+          <NavUser
             user={{
-              name:session.user?.name!,
-              avatar:session.user?.image!,
-              email:session.user?.email!
+              name: session.user?.name!,
+              avatar: session.user?.image!,
+              email: session.user?.email!
             }}
           />
         ) : (
