@@ -1,13 +1,13 @@
 'use client'
 import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport } from 'ai'
-import { Brain, ChevronDown, ChevronRight } from 'lucide-react'
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { DefaultChatTransport, type FileUIPart } from 'ai'
+import { Brain, ChevronDown, ChevronRight, FileText, ImageIcon, Film, Music, Download } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { trpc } from '@/server/client-trpc'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { DEFAULT_MODEL } from '@/lib/config'
-import { InputModel } from './input-box'
+import { InputModel, type PendingAttachment } from './input-box'
 import Markdown from 'react-markdown'
 import { useRouter } from 'next/navigation'
 
@@ -47,11 +47,35 @@ interface ChatProps {
   onConversationCreated?: (id: string) => void
 }
 
+function getFileIcon(mimeType: string) {
+  if (mimeType.startsWith('image/')) return <ImageIcon className="w-4 h-4" />
+  if (mimeType.startsWith('video/')) return <Film className="w-4 h-4" />
+  if (mimeType.startsWith('audio/')) return <Music className="w-4 h-4" />
+  return <FileText className="w-4 h-4" />
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+type StoredAttachment = {
+  id: string
+  fileName: string
+  mimeType: string
+  size: number
+  key: string
+  url: string
+}
+
 export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConversationCreated }: ChatProps) {
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
   const [input, setInput] = useState('')
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const [hasTitleBeenGenerated, setHasTitleBeenGenerated] = useState(false)
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
+  const [messageAttachments, setMessageAttachments] = useState<Record<string, StoredAttachment[]>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { data: session } = useSession()
@@ -70,6 +94,63 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
       utils.conversation.getAllConversations.invalidate()
     }
   })
+
+  const handleAddAttachments = useCallback(async (files: FileList) => {
+    const newAttachments: PendingAttachment[] = Array.from(files).map(file => ({
+      id: crypto.randomUUID(),
+      file,
+      fileName: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      size: file.size,
+      key: '',
+      url: '',
+      status: 'uploading' as const,
+      preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+    }))
+
+    setPendingAttachments(prev => [...prev, ...newAttachments])
+
+    for (const attachment of newAttachments) {
+      try {
+        const key = `attachments/${Date.now()}-${attachment.fileName}`
+
+        const formData = new FormData()
+        formData.append('file', attachment.file)
+        formData.append('key', key)
+
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!res.ok) throw new Error('Failed to upload file')
+        const { url } = await res.json()
+
+        setPendingAttachments(prev =>
+          prev.map(a =>
+            a.id === attachment.id
+              ? { ...a, status: 'ready' as const, key, url }
+              : a
+          )
+        )
+      } catch (error) {
+        console.error('Upload failed:', error)
+        setPendingAttachments(prev =>
+          prev.map(a =>
+            a.id === attachment.id ? { ...a, status: 'error' as const } : a
+          )
+        )
+      }
+    }
+  }, [])
+
+  const handleRemoveAttachment = useCallback((id: string) => {
+    setPendingAttachments(prev => {
+      const attachment = prev.find(a => a.id === id)
+      if (attachment?.preview) URL.revokeObjectURL(attachment.preview)
+      return prev.filter(a => a.id !== id)
+    })
+  }, [])
 
   const transport = useMemo(() => new DefaultChatTransport({
     api: '/api/chat',
@@ -170,11 +251,14 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
     console.log('Debug - conversationWithMessages:', conversationWithMessages)
 
     if (conversationWithMessages?.messages) {
-      console.log('Debug - raw messages:', conversationWithMessages.messages)
+      const attachmentsMap: Record<string, StoredAttachment[]> = {}
       const formattedMessages = conversationWithMessages.messages.map(msg => {
         const parts: any[] = [{ type: 'text' as const, text: msg.content }];
         if (msg.reasoningText) {
           parts.unshift({ type: 'reasoning' as const, text: msg.reasoningText });
+        }
+        if ((msg as any).attachments && (msg as any).attachments.length > 0) {
+          attachmentsMap[msg.id] = (msg as any).attachments
         }
         return {
           id: msg.id,
@@ -183,7 +267,7 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
           parts
         };
       })
-      console.log('Debug - formattedMessages:', formattedMessages)
+      setMessageAttachments(attachmentsMap)
       setMessages(formattedMessages)
       setIsFirstMessage(conversationWithMessages.messages.length === 0)
       setHasTitleBeenGenerated(conversationWithMessages.title !== 'New Chat')
@@ -195,12 +279,20 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
   }, [conversationWithMessages, conversationId, setMessages])
 
   const handleSendMessage = async (text: string) => {
-    if (!text.trim()) return
+    if (!text.trim() && pendingAttachments.length === 0) return
+
+    const readyAttachments = pendingAttachments.filter(a => a.status === 'ready')
+    const attachmentsPayload = readyAttachments.map(a => ({
+      fileName: a.fileName,
+      mimeType: a.mimeType,
+      size: a.size,
+      key: a.key,
+      url: a.url,
+    }))
 
     setIsFirstMessage(false)
     let currentConversationId = conversationId
 
-    // Save user message to database if we have a valid conversation
     if (currentConversationId === 'new') {
       if (!activeProfileId) {
         console.error('No active profile selected')
@@ -214,15 +306,21 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
         currentConversationId = newConversation.id
         onConversationCreated?.(currentConversationId)
         
-        // Save the first message
-        await createMessage.mutateAsync({
-          content: text,
+        const savedMsg = await createMessage.mutateAsync({
+          content: text || '(attachment)',
           role: 'user',
           model: selectedModel.id,
-          conversationId: currentConversationId
+          conversationId: currentConversationId,
+          attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
         })
+
+        if (savedMsg && attachmentsPayload.length > 0) {
+          setMessageAttachments(prev => ({
+            ...prev,
+            [savedMsg.id]: (savedMsg as any).attachments || attachmentsPayload.map((a, i) => ({ ...a, id: `temp-${i}`, messageId: savedMsg.id })),
+          }))
+        }
         
-        // Redirect to the new conversation URL
         router.push(`/chat/${currentConversationId}`)
       } catch (error) {
         console.error('Failed to create conversation or save message:', error)
@@ -230,19 +328,46 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
       }
     } else {
       try {
-        await createMessage.mutateAsync({
-          content: text,
+        const savedMsg = await createMessage.mutateAsync({
+          content: text || '(attachment)',
           role: 'user',
           model: selectedModel.id,
-          conversationId: currentConversationId
+          conversationId: currentConversationId,
+          attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
         })
+
+        if (savedMsg && attachmentsPayload.length > 0) {
+          setMessageAttachments(prev => ({
+            ...prev,
+            [savedMsg.id]: (savedMsg as any).attachments || attachmentsPayload.map((a, i) => ({ ...a, id: `temp-${i}`, messageId: savedMsg.id })),
+          }))
+        }
       } catch (error) {
         console.error('Failed to save user message:', error)
       }
     }
 
+    // Build FileUIPart[] for the AI SDK so attachments are sent to the model
+    const fileParts: FileUIPart[] = readyAttachments
+      .filter(a => a.url)
+      .map(a => ({
+        type: 'file' as const,
+        filename: a.fileName,
+        mediaType: a.mimeType,
+        url: a.url,
+      }))
+
+    // Clear pending attachments (only stored in DB after message sent)
+    pendingAttachments.forEach(a => {
+      if (a.preview) URL.revokeObjectURL(a.preview)
+    })
+    setPendingAttachments([])
+
     sendMessage(
-      { text },
+      {
+        text: text || '(attachment)',
+        ...(fileParts.length > 0 ? { files: fileParts } : {}),
+      },
       {
         body: {
           model: selectedModel.id,
@@ -303,6 +428,36 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
                       : 'text-foreground'
                       }`}
                   >
+                    {/* Attachments */}
+                    {messageAttachments[message.id] && messageAttachments[message.id].length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {messageAttachments[message.id].map((att) => (
+                          <div key={att.id} className="group/att relative">
+                            {att.mimeType.startsWith('image/') ? (
+                              <a href={att.url} target="_blank" rel="noopener noreferrer">
+                                <img
+                                  src={att.url}
+                                  alt={att.fileName}
+                                  className="max-w-[200px] max-h-[150px] rounded-lg object-cover border border-border/50"
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 bg-background/50 border border-border/50 rounded-lg px-3 py-2 text-xs hover:bg-muted/50 transition-colors"
+                              >
+                                {getFileIcon(att.mimeType)}
+                                <span className="max-w-[120px] truncate">{att.fileName}</span>
+                                <span className="text-muted-foreground">{formatFileSize(att.size)}</span>
+                                <Download className="w-3 h-3 text-muted-foreground" />
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="text-[15px] leading-relaxed">
                       {message.parts.map((part, i) => {
                         switch (part.type) {
@@ -315,6 +470,32 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
                                 <Markdown>{reasoningText}</Markdown>
                               </ReasoningBlock>
                             ) : null;
+                          case 'file':
+                            const filePart = part as any;
+                            if (filePart.mediaType?.startsWith('image/')) {
+                              return (
+                                <a key={`${message.id}-${i}`} href={filePart.url} target="_blank" rel="noopener noreferrer">
+                                  <img
+                                    src={filePart.url}
+                                    alt={filePart.filename || 'attachment'}
+                                    className="max-w-[200px] max-h-[150px] rounded-lg object-cover border border-border/50 my-1"
+                                  />
+                                </a>
+                              );
+                            }
+                            return (
+                              <a
+                                key={`${message.id}-${i}`}
+                                href={filePart.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 bg-background/50 border border-border/50 rounded-lg px-3 py-2 text-xs hover:bg-muted/50 transition-colors my-1"
+                              >
+                                {getFileIcon(filePart.mediaType || '')}
+                                <span className="max-w-[120px] truncate">{filePart.filename || 'file'}</span>
+                                <Download className="w-3 h-3 text-muted-foreground" />
+                              </a>
+                            );
                         }
                       })}
                     </div>
@@ -332,20 +513,15 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
                   )}
                 </div>
               ))}
-              {/* {status === 'loading' && (
+              {status === 'submitted' && (
                 <div className="flex gap-3 justify-start items-start">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 animate-pulse">
-                    <Bot className="w-4 h-4 text-primary" />
-                  </div>
-                  <div className="bg-muted px-4 py-3 rounded-2xl">
-                    <div className="flex gap-1.5 items-center h-5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-delay:-0.3s]"></div>
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-delay:-0.15s]"></div>
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce"></div>
-                    </div>
+                  <div className="flex items-center gap-1 px-1 py-3">
+                    <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" />
                   </div>
                 </div>
-              )} */}
+              )}
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -353,7 +529,7 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
       </div>
 
       <div className="bg-background px-6 py-4 shrink-0">
-       <InputModel handleSubmit={handleSubmit} input={input} selectedModel={selectedModel} setInput={setInput} setSelectedModel={setSelectedModel} textareaRef={textareaRef} isStreaming={isStreaming} isLoggedIn={!!session}/>
+       <InputModel handleSubmit={handleSubmit} input={input} selectedModel={selectedModel} setInput={setInput} setSelectedModel={setSelectedModel} textareaRef={textareaRef} isStreaming={isStreaming} isLoggedIn={!!session} pendingAttachments={pendingAttachments} onAddAttachments={handleAddAttachments} onRemoveAttachment={handleRemoveAttachment}/>
       </div>
     </div>
   )

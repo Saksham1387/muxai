@@ -15,7 +15,9 @@ export async function getConversationByIdHandler(
             id:input.id
         },
         include:{
-          messages:true
+          messages:{
+            include:{ attachments: true }
+          }
         }
     })
     
@@ -97,6 +99,33 @@ export async function createConversationHandler(
     }
 
   return conversation;
+}
+
+export async function getConversationsByProfileHandler(
+  input: { profileId: string },
+  ctx: Context
+): Promise<Conversation[]> {
+  const conversations = await ctx.db.conversation.findMany({
+    where: {
+      userId: ctx.session.user.id,
+      profileId: input.profileId,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return conversations || [];
+}
+
+export async function deleteMultipleConversationsHandler(
+  input: { ids: string[] },
+  ctx: Context
+): Promise<void> {
+  await ctx.db.conversation.deleteMany({
+    where: {
+      id: { in: input.ids },
+      userId: ctx.session.user.id,
+    },
+  });
 }
 
 export async function updateConversationTitleHandler(

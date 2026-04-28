@@ -1,6 +1,6 @@
 import { router, publicProcedure, protectedProcedure } from '../../trpc';
-import { createConversation, deleteConversationSchema, getByIdSchema, updateConversationTitleSchema } from './schema';
-import { createConversationHandler, deleteConversationHandler, getAllConversationsHandler, getConversationByIdHandler, updateConversationTitleHandler } from './handler';
+import { createConversation, deleteConversationSchema, deleteMultipleConversationsSchema, getByIdSchema, getByProfileSchema, updateConversationTitleSchema } from './schema';
+import { createConversationHandler, deleteConversationHandler, deleteMultipleConversationsHandler, getAllConversationsHandler, getConversationByIdHandler, getConversationsByProfileHandler, updateConversationTitleHandler } from './handler';
 
 export const conversationRouter = router({
   getById: publicProcedure
@@ -9,10 +9,18 @@ export const conversationRouter = router({
 
   getAllConversations: protectedProcedure
     .query(({ctx}) => getAllConversationsHandler(ctx)),
+
+  getByProfile: protectedProcedure
+    .input(getByProfileSchema)
+    .query(({input,ctx}) => getConversationsByProfileHandler(input,ctx)),
     
   deleteConversation: protectedProcedure
     .input(deleteConversationSchema)
     .mutation(({input,ctx}) => deleteConversationHandler(input,ctx)),
+
+  deleteMultiple: protectedProcedure
+    .input(deleteMultipleConversationsSchema)
+    .mutation(({input,ctx}) => deleteMultipleConversationsHandler(input,ctx)),
 
   createConversation: protectedProcedure
     .input(createConversation)

@@ -13,8 +13,22 @@ export async function createMessageHandler(
       model: input.model || 'openai/gpt-4o-mini',
       conversationId: input.conversationId,
       reasoningText: input.reasoningText,
-      hasReasoned: input.hasReasoned ?? false
-    }
+      hasReasoned: input.hasReasoned ?? false,
+      ...(input.attachments && input.attachments.length > 0
+        ? {
+            attachments: {
+              create: input.attachments.map((a) => ({
+                fileName: a.fileName,
+                mimeType: a.mimeType,
+                size: a.size,
+                key: a.key,
+                url: a.url,
+              })),
+            },
+          }
+        : {}),
+    },
+    include: { attachments: true },
   });
 
   return message;

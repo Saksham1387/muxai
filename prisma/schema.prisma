@@ -55,6 +55,18 @@ model Conversation {
   updatedAt DateTime @default(now())
 }
 
+model Attachment {
+  id                String  @id @default(cuid())
+  fileName    String   
+  mimeType    String   
+  size        Int      
+  key         String   @unique 
+  url         String  
+
+  messageId String
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}
+
 
 
 model Account {
@@ -100,8 +112,10 @@ model Message {
   hasReasoned Boolean @default(false)
   reasoningText String?
   
+  attachments Attachment[]
+
   conversationId String 
-  conversation Conversation @relation(fields: [conversationId],references: [id])
+  conversation Conversation @relation(fields: [conversationId],references: [id], onDelete: Cascade)
 }
 
 enum MessageRole {

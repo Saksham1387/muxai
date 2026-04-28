@@ -76,10 +76,6 @@ export async function POST(request: Request) {
     },
   }); 
 
-  // You can wait for reasoning in the background without blocking the response
-  result.reasoningText.then((text) => {
-    if (text) console.log('Generated Reasoning:', text);
-  });
 
   return result.toUIMessageStreamResponse();
 }

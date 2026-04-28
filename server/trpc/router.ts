@@ -2,11 +2,13 @@ import { router } from './trpc';
 import { conversationRouter } from './routers/conversation';
 import { messageRouter } from './routers/message';
 import { profileRouter } from './routers/profile';
+import { attachmentRouter } from './routers/attachment';
 
 export const appRouter = router({
     conversation:conversationRouter,
     message:messageRouter,
-    profile:profileRouter
+    profile:profileRouter,
+    attachment:attachmentRouter
 });
 
 export type AppRouter = typeof appRouter;

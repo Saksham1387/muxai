@@ -17,6 +17,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { trpc } from '@/server/client-trpc'
 import { NavUser } from './nav-user'
+import { toast } from 'sonner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,6 +64,8 @@ export function AppSidebar({
   const { toggleSidebar } = useSidebar()
   const [searchQuery, setSearchQuery] = useState('')
 
+  const utils = trpc.useUtils()
+
   const { data: conversations = [] } = trpc.conversation.getAllConversations.useQuery()
   const { data: profiles = [] } = trpc.profile.listProfiles.useQuery(undefined, {
     enabled: !!session?.user
@@ -104,16 +107,18 @@ export function AppSidebar({
 
   const handleDeleteConversation = async (e: React.MouseEvent, convId: string) => {
     e.stopPropagation()
-    if (!confirm('Are you sure you want to delete this conversation?')) return
 
     try {
       await deleteConversation.mutateAsync({ id: convId })
+      await utils.conversation.getAllConversations.invalidate()
+      toast.success('Conversation deleted')
       if (activeConversation === convId) {
         router.push('/')
         onSelectConversation(null)
       }
     } catch (error) {
       console.error('Failed to delete conversation:', error)
+      toast.error('Failed to delete conversation')
     }
   }
 
@@ -141,7 +146,9 @@ export function AppSidebar({
         <Button
           onClick={handleNewChat}
           disabled={createConversation.isPending}
-          className="w-full h-9 bg-primary/80 hover:bg-primary text-primary-foreground rounded-lg text-sm font-medium"
+          className="w-full h-9 relative overflow-hidden bg-primary/80 hover:bg-primary text-white rounded-lg text-sm font-medium shadow-md
+            before:content-[''] before:absolute before:inset-0 before:bg-gradient-to-br before:from-transparent before:via-primary/50 before:to-transparent
+            after:content-[''] after:absolute after:inset-0 after:rounded-lg after:shadow-inner after:shadow-primary/20"
         >
           New Chat
         </Button>
@@ -172,23 +179,25 @@ export function AppSidebar({
                   </p>
                   {group.items.map(conv => (
                     <SidebarMenuItem key={conv.id}>
-                      <SidebarMenuButton
-                        isActive={activeConversation === conv.id}
-                        onClick={() => {
-                          router.push(`/chat/${conv.id}`)
-                          onSelectConversation(conv.id)
-                        }}
-                        className="w-full justify-between group/item h-8 px-2 relative"
-                      >
-                        <span className="truncate text-sm">{conv.title}</span>
+                      <div className="relative group/item flex items-center">
+                        <SidebarMenuButton
+                          isActive={activeConversation === conv.id}
+                          onClick={() => {
+                            router.push(`/chat/${conv.id}`)
+                            onSelectConversation(conv.id)
+                          }}
+                          className="w-full h-8 px-2 pr-7"
+                        >
+                          <span className="truncate text-sm">{conv.title}</span>
+                        </SidebarMenuButton>
                         <button
                           onClick={e => handleDeleteConversation(e, conv.id)}
-                          className="opacity-0 -translate-x-4 group-hover/item:opacity-100 group-hover/item:translate-x-0 transition-all duration-300 ease-in-out p-0.5 hover:bg-destructive/20 rounded shrink-0"
+                          className="absolute right-1 opacity-0 -translate-x-2 group-hover/item:opacity-100 group-hover/item:translate-x-0 transition-all duration-300 ease-in-out p-0.5 hover:bg-destructive/20 rounded shrink-0"
                           disabled={deleteConversation.isPending}
                         >
                           <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
                         </button>
-                      </SidebarMenuButton>
+                      </div>
                     </SidebarMenuItem>
                   ))}
                 </div>
@@ -205,7 +214,7 @@ export function AppSidebar({
             {/* Profile Selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 w-full px-2 py-1.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent rounded-md transition-colors text-left">
+              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent rounded-md transition-colors text-left">
                   <div className="w-5 h-5 rounded-full border border-primary/50 flex items-center justify-center shrink-0">
                     <User className="w-3 h-3 text-primary" />
                   </div>

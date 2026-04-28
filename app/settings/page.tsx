@@ -2,7 +2,7 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useState, useRef, KeyboardEvent, useEffect } from 'react'
+import { useState, useRef, KeyboardEvent, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
@@ -10,11 +10,22 @@ import {
   ArrowLeft,
   ChevronDown,
   Plus,
-  X
+  X,
+  Trash2,
+  Moon,
+  Sun,
+  Paperclip,
+  FileText,
+  ImageIcon,
+  Film,
+  Music,
+  Download,
+  Upload,
 } from 'lucide-react'
 import { DEFAULT_MODEL } from '@/lib/config'
 import { trpc } from '@/server/client-trpc'
 import { toast } from 'sonner'
+import { useTheme } from 'next-themes'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,12 +43,30 @@ import {
 
 const TABS = [
   'Account',
-  'Customization'
+  'Customization',
+  'History',
+  'Attachments',
 ] as const
 
 type Tab = (typeof TABS)[number]
 
 const SUGGESTED_TRAITS = ['friendly', 'witty', 'concise', 'curious', 'empathetic', 'creative', 'patient']
+
+type ProfileAttachment = {
+  id: string
+  fileName: string
+  mimeType: string
+  size: number
+  key: string
+  url: string
+  messageId: string
+  message: {
+    conversation: {
+      title: string
+      id: string
+    }
+  }
+}
 
 export default function SettingsPage() {
   const { data: session, status } = useSession()
@@ -59,8 +88,75 @@ export default function SettingsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [newProfileName, setNewProfileName] = useState('')
 
+  // History tab state
+  const [historyProfileId, setHistoryProfileId] = useState<string | null>(null)
+  const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set())
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+
+  // Attachments tab state
+  const [attachmentsProfileId, setAttachmentsProfileId] = useState<string | null>(null)
+  const [selectedAttIds, setSelectedAttIds] = useState<Set<string>>(new Set())
+  const [deleteAttDialogOpen, setDeleteAttDialogOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const { theme, setTheme } = useTheme()
+
   const { data: profiles } = trpc.profile.listProfiles.useQuery(undefined, {
     enabled: status === 'authenticated'
+  })
+
+  const { data: historyConversations = [], isLoading: historyLoading } = trpc.conversation.getByProfile.useQuery(
+    { profileId: historyProfileId! },
+    { enabled: !!historyProfileId && activeTab === 'History' }
+  )
+
+  const deleteMultiple = trpc.conversation.deleteMultiple.useMutation({
+    onSuccess: () => {
+      utils.conversation.getByProfile.invalidate()
+      utils.conversation.getAllConversations.invalidate()
+      setSelectedConvIds(new Set())
+      setDeleteDialogOpen(false)
+      toast.success('Conversations deleted')
+    },
+    onError: () => {
+      toast.error('Failed to delete conversations')
+    }
+  })
+
+  const deleteSingle = trpc.conversation.deleteConversation.useMutation({
+    onSuccess: () => {
+      utils.conversation.getByProfile.invalidate()
+      utils.conversation.getAllConversations.invalidate()
+      toast.success('Conversation deleted')
+    },
+    onError: () => {
+      toast.error('Failed to delete conversation')
+    }
+  })
+
+  // Attachments queries & mutations
+  const { data: profileAttachmentsData, isLoading: attachmentsLoading } = trpc.attachment.getByProfile.useQuery(
+    { profileId: attachmentsProfileId! },
+    { enabled: !!attachmentsProfileId && activeTab === 'Attachments' }
+  )
+  const profileAttachments = (profileAttachmentsData ?? []) as ProfileAttachment[]
+
+  const deleteAttachment = trpc.attachment.delete.useMutation({
+    onSuccess: () => {
+      utils.attachment.getByProfile.invalidate()
+      toast.success('Attachment deleted')
+    },
+    onError: () => toast.error('Failed to delete attachment'),
+  })
+
+  const deleteMultipleAttachments = trpc.attachment.deleteMultiple.useMutation({
+    onSuccess: () => {
+      utils.attachment.getByProfile.invalidate()
+      setSelectedAttIds(new Set())
+      setDeleteAttDialogOpen(false)
+      toast.success('Attachments deleted')
+    },
+    onError: () => toast.error('Failed to delete attachments'),
   })
 
   // Auto-select first profile on load
@@ -69,6 +165,20 @@ export default function SettingsPage() {
       handleProfileSelect(profiles[0])
     }
   }, [profiles])
+
+  // Auto-select first profile for history tab
+  useEffect(() => {
+    if (profiles && profiles.length > 0 && !historyProfileId) {
+      setHistoryProfileId(profiles[0].id)
+    }
+  }, [profiles, historyProfileId])
+
+  // Auto-select first profile for attachments tab
+  useEffect(() => {
+    if (profiles && profiles.length > 0 && !attachmentsProfileId) {
+      setAttachmentsProfileId(profiles[0].id)
+    }
+  }, [profiles, attachmentsProfileId])
 
   const createProfile = trpc.profile.createProfile.useMutation({
     onSuccess: (newProfile) => {
@@ -166,6 +276,105 @@ export default function SettingsPage() {
     }
   }
 
+  const toggleConvSelection = (id: string) => {
+    setSelectedConvIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAllConversations = () => {
+    if (selectedConvIds.size === historyConversations.length) {
+      setSelectedConvIds(new Set())
+    } else {
+      setSelectedConvIds(new Set(historyConversations.map(c => c.id)))
+    }
+  }
+
+  const handleDeleteSelected = () => {
+    if (selectedConvIds.size === 0) return
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDeleteSelected = async () => {
+    await deleteMultiple.mutateAsync({ ids: Array.from(selectedConvIds) })
+  }
+
+  const handleDeleteSingle = async (id: string) => {
+    await deleteSingle.mutateAsync({ id })
+  }
+
+  function formatRelativeTime(date: Date) {
+    const now = new Date()
+    const diff = now.getTime() - new Date(date).getTime()
+    const minutes = Math.floor(diff / 60000)
+    const hours = Math.floor(diff / 3600000)
+    const days = Math.floor(diff / 86400000)
+    const months = Math.floor(days / 30)
+
+    if (minutes < 1) return 'just now'
+    if (minutes < 60) return `${minutes}m ago`
+    if (hours < 24) return `about ${hours} hour${hours > 1 ? 's' : ''} ago`
+    if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`
+    if (days < 30) return `${Math.floor(days / 7)} week${Math.floor(days / 7) > 1 ? 's' : ''} ago`
+    return `${months} month${months > 1 ? 's' : ''} ago`
+  }
+
+  const historyProfileName = useMemo(() =>
+    profiles?.find(p => p.id === historyProfileId)?.name || 'Default',
+    [profiles, historyProfileId]
+  )
+
+  const attachmentsProfileName = useMemo(() =>
+    profiles?.find(p => p.id === attachmentsProfileId)?.name || 'Default',
+    [profiles, attachmentsProfileId]
+  )
+
+  function getFileIcon(mimeType: string) {
+    if (mimeType.startsWith('image/')) return <ImageIcon className="w-4 h-4" />
+    if (mimeType.startsWith('video/')) return <Film className="w-4 h-4" />
+    if (mimeType.startsWith('audio/')) return <Music className="w-4 h-4" />
+    return <FileText className="w-4 h-4" />
+  }
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  const toggleAttSelection = (id: string) => {
+    setSelectedAttIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAllAttachments = () => {
+    if (selectedAttIds.size === profileAttachments.length) {
+      setSelectedAttIds(new Set())
+    } else {
+      setSelectedAttIds(new Set(profileAttachments.map(a => a.id)))
+    }
+  }
+
+  const handleDeleteSelectedAttachments = () => {
+    if (selectedAttIds.size === 0) return
+    setDeleteAttDialogOpen(true)
+  }
+
+  const confirmDeleteSelectedAttachments = async () => {
+    await deleteMultipleAttachments.mutateAsync({ ids: Array.from(selectedAttIds) })
+  }
+
+  const handleDeleteSingleAttachment = async (id: string) => {
+    await deleteAttachment.mutateAsync({ id })
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground ">
       {/* Top bar */}
@@ -178,6 +387,13 @@ export default function SettingsPage() {
           Back to Chat
         </button>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
           {user && (
             <button
               onClick={() => router.push('/auth')}
@@ -469,6 +685,301 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {activeTab === 'History' && (
+            <div>
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h2 className="text-xl font-semibold">Chat History</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    View and manage your conversation history by profile.
+                  </p>
+                </div>
+                {selectedConvIds.size > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDeleteSelected}
+                    className="shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                    Delete {selectedConvIds.size}
+                  </Button>
+                )}
+              </div>
+
+              {/* Profile filter */}
+              <div className="mb-5 mt-4">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <div className="inline-flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors">
+                      <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                      <span className="text-sm font-medium">{historyProfileName}</span>
+                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                    </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {profiles?.map((profile) => (
+                      <DropdownMenuItem
+                        key={profile.id}
+                        onClick={() => {
+                          setHistoryProfileId(profile.id)
+                          setSelectedConvIds(new Set())
+                        }}
+                      >
+                        <div className={`w-2 h-2 rounded-full mr-2 ${profile.id === historyProfileId ? 'bg-primary' : 'bg-transparent border border-muted-foreground'}`} />
+                        {profile.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              {/* Conversation table */}
+              <div className="border border-border rounded-lg overflow-hidden">
+                {/* Table header */}
+                <div className="flex items-center px-4 py-3 bg-muted/30 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <div className="w-8 shrink-0">
+                    <button
+                      onClick={toggleAllConversations}
+                      className={`w-4 h-4 rounded border transition-colors flex items-center justify-center ${
+                        historyConversations.length > 0 && selectedConvIds.size === historyConversations.length
+                          ? 'bg-primary border-primary text-primary-foreground'
+                          : 'border-border hover:border-muted-foreground'
+                      }`}
+                    >
+                      {historyConversations.length > 0 && selectedConvIds.size === historyConversations.length && (
+                        <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex-1">Title</div>
+                  <div className="w-24 text-right">Profile</div>
+                  <div className="w-32 text-right pr-1">Created</div>
+                  <div className="w-10" />
+                </div>
+
+                {/* Table body */}
+                {historyLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+                  </div>
+                ) : historyConversations.length === 0 ? (
+                  <div className="text-sm text-muted-foreground text-center py-12">
+                    No conversations found for this profile.
+                  </div>
+                ) : (
+                  historyConversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      className={`flex items-center px-4 py-3 border-b border-border last:border-b-0 group hover:bg-muted/20 transition-colors ${
+                        selectedConvIds.has(conv.id) ? 'bg-primary/5' : ''
+                      }`}
+                    >
+                      <div className="w-8 shrink-0">
+                        <button
+                          onClick={() => toggleConvSelection(conv.id)}
+                          className={`w-4 h-4 rounded border transition-colors flex items-center justify-center ${
+                            selectedConvIds.has(conv.id)
+                              ? 'bg-primary border-primary text-primary-foreground'
+                              : 'border-border hover:border-muted-foreground'
+                          }`}
+                        >
+                          {selectedConvIds.has(conv.id) && (
+                            <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium truncate block">{conv.title}</span>
+                      </div>
+                      <div className="w-24 text-right">
+                        <span className="text-xs text-muted-foreground">{historyProfileName}</span>
+                      </div>
+                      <div className="w-32 text-right pr-1">
+                        <span className="text-xs text-muted-foreground">{formatRelativeTime(conv.createdAt)}</span>
+                      </div>
+                      <div className="w-10 flex justify-end">
+                        <button
+                          onClick={() => handleDeleteSingle(conv.id)}
+                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all"
+                          disabled={deleteSingle.isPending}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {historyConversations.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-3">
+                  {historyConversations.length} conversation{historyConversations.length !== 1 ? 's' : ''}
+                  {selectedConvIds.size > 0 && ` · ${selectedConvIds.size} selected`}
+                </p>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'Attachments' && (
+            <div>
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h2 className="text-xl font-semibold">Attachments</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    View and manage all files uploaded across your conversations.
+                  </p>
+                </div>
+                {selectedAttIds.size > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDeleteSelectedAttachments}
+                    className="shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                    Delete {selectedAttIds.size}
+                  </Button>
+                )}
+              </div>
+
+              {/* Profile filter */}
+              <div className="mb-5 mt-4">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <div className="inline-flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors">
+                      <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                      <span className="text-sm font-medium">{attachmentsProfileName}</span>
+                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                    </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {profiles?.map((profile) => (
+                      <DropdownMenuItem
+                        key={profile.id}
+                        onClick={() => {
+                          setAttachmentsProfileId(profile.id)
+                          setSelectedAttIds(new Set())
+                        }}
+                      >
+                        <div className={`w-2 h-2 rounded-full mr-2 ${profile.id === attachmentsProfileId ? 'bg-primary' : 'bg-transparent border border-muted-foreground'}`} />
+                        {profile.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              {/* Attachments table */}
+              <div className="border border-border rounded-lg overflow-hidden">
+                <div className="flex items-center px-4 py-3 bg-muted/30 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <div className="w-8 shrink-0">
+                    <button
+                      onClick={toggleAllAttachments}
+                      className={`w-4 h-4 rounded border transition-colors flex items-center justify-center ${
+                        profileAttachments.length > 0 && selectedAttIds.size === profileAttachments.length
+                          ? 'bg-primary border-primary text-primary-foreground'
+                          : 'border-border hover:border-muted-foreground'
+                      }`}
+                    >
+                      {profileAttachments.length > 0 && selectedAttIds.size === profileAttachments.length && (
+                        <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      )}
+                    </button>
+                  </div>
+                  <div className="w-8 shrink-0" />
+                  <div className="flex-1">File Name</div>
+                  <div className="w-20 text-right">Size</div>
+                  <div className="w-32 text-right">Conversation</div>
+                  <div className="w-16" />
+                </div>
+
+                {attachmentsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+                  </div>
+                ) : profileAttachments.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Paperclip className="w-8 h-8 text-muted-foreground/40 mb-3" />
+                    <p className="text-sm text-muted-foreground">No attachments found for this profile.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Files attached to messages will appear here.</p>
+                  </div>
+                ) : (
+                  profileAttachments.map((att) => (
+                    <div
+                      key={att.id}
+                      className={`flex items-center px-4 py-3 border-b border-border last:border-b-0 group hover:bg-muted/20 transition-colors ${
+                        selectedAttIds.has(att.id) ? 'bg-primary/5' : ''
+                      }`}
+                    >
+                      <div className="w-8 shrink-0">
+                        <button
+                          onClick={() => toggleAttSelection(att.id)}
+                          className={`w-4 h-4 rounded border transition-colors flex items-center justify-center ${
+                            selectedAttIds.has(att.id)
+                              ? 'bg-primary border-primary text-primary-foreground'
+                              : 'border-border hover:border-muted-foreground'
+                          }`}
+                        >
+                          {selectedAttIds.has(att.id) && (
+                            <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          )}
+                        </button>
+                      </div>
+                      <div className="w-8 shrink-0 text-muted-foreground">
+                        {att.mimeType.startsWith('image/') ? (
+                          <img
+                            src={att.url}
+                            alt={att.fileName}
+                            className="w-7 h-7 rounded object-cover border border-border/50"
+                          />
+                        ) : (
+                          getFileIcon(att.mimeType)
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 pl-2">
+                        <span className="text-sm font-medium truncate block">{att.fileName}</span>
+                        <span className="text-[10px] text-muted-foreground">{att.mimeType}</span>
+                      </div>
+                      <div className="w-20 text-right">
+                        <span className="text-xs text-muted-foreground">{formatFileSize(att.size)}</span>
+                      </div>
+                      <div className="w-32 text-right">
+                        <span className="text-xs text-muted-foreground truncate block">
+                          {(att as any).message?.conversation?.title || '—'}
+                        </span>
+                      </div>
+                      <div className="w-16 flex justify-end gap-1">
+                        <a
+                          href={att.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-all"
+                        >
+                          <Download className="w-3.5 h-3.5 text-muted-foreground" />
+                        </a>
+                        <button
+                          onClick={() => handleDeleteSingleAttachment(att.id)}
+                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all"
+                          disabled={deleteAttachment.isPending}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {profileAttachments.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-3">
+                  {profileAttachments.length} attachment{profileAttachments.length !== 1 ? 's' : ''}
+                  {selectedAttIds.size > 0 && ` · ${selectedAttIds.size} selected`}
+                </p>
+              )}
+            </div>
+          )}
+
           
         </main>
       </div>
@@ -503,6 +1014,44 @@ export default function SettingsPage() {
             </Button>
             <Button onClick={handleCreateProfile} disabled={createProfile.isPending}>
               {createProfile.isPending ? 'Creating...' : 'Create Profile'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete Conversations</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedConvIds.size} conversation{selectedConvIds.size !== 1 ? 's' : ''}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteSelected} disabled={deleteMultiple.isPending}>
+              {deleteMultiple.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteAttDialogOpen} onOpenChange={setDeleteAttDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete Attachments</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedAttIds.size} attachment{selectedAttIds.size !== 1 ? 's' : ''}? This will remove the files permanently.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteAttDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteSelectedAttachments} disabled={deleteMultipleAttachments.isPending}>
+              {deleteMultipleAttachments.isPending ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

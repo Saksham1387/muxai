@@ -17,3 +17,11 @@ export const updateConversationTitleSchema = z.object({
     id: z.string(),
     title: z.string()
 })
+
+export const getByProfileSchema = z.object({
+    profileId: z.string()
+})
+
+export const deleteMultipleConversationsSchema = z.object({
+    ids: z.array(z.string())
+})
