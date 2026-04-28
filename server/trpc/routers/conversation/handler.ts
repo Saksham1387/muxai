@@ -77,14 +77,15 @@ export async function deleteConversationHandler(
 }
 
 export async function createConversationHandler(
-  input: { title: string },
+  input: { title: string,profileId:string },
   ctx: Context
 ): Promise<Conversation> {
 
     const conversation = await ctx.db.conversation.create({
       data:{
-        title:input.title,
-        userId:ctx.session.user.id
+        title:input.title,  
+        userId:ctx.session.user.id,
+        profileId: input.profileId
       }
     })
     

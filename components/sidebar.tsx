@@ -11,16 +11,24 @@ import {
   SidebarMenuButton,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { Search, LogOut, Trash2, PanelLeft, MessageSquareDot } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { Search, LogOut, Trash2, PanelLeft, MessageSquareDot, Brain, ChevronUp, User } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { trpc } from '@/server/client-trpc'
 import { NavUser } from './nav-user'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface SidebarProps {
   activeConversation: string | null
   onSelectConversation: (id: string | null) => void
+  activeProfileId: string | null
+  onSelectProfile: (id: string) => void
 }
 
 function groupConversationsByTime(conversations: { id: string; title: string; createdAt: Date }[]) {
@@ -47,6 +55,8 @@ function groupConversationsByTime(conversations: { id: string; title: string; cr
 export function AppSidebar({
   activeConversation,
   onSelectConversation,
+  activeProfileId,
+  onSelectProfile,
 }: SidebarProps) {
   const { data: session } = useSession()
   const router = useRouter()
@@ -54,6 +64,21 @@ export function AppSidebar({
   const [searchQuery, setSearchQuery] = useState('')
 
   const { data: conversations = [] } = trpc.conversation.getAllConversations.useQuery()
+  const { data: profiles = [] } = trpc.profile.listProfiles.useQuery(undefined, {
+    enabled: !!session?.user
+  })
+  
+  // Auto-select first profile if none selected
+  useEffect(() => {
+    if (profiles.length > 0 && !activeProfileId) {
+      onSelectProfile(profiles[0].id)
+    }
+  }, [profiles, activeProfileId, onSelectProfile])
+
+  const activeProfile = useMemo(() => 
+    profiles.find(p => p.id === activeProfileId) || profiles[0]
+  , [profiles, activeProfileId])
+
   const createConversation = trpc.conversation.createConversation.useMutation()
   const deleteConversation = trpc.conversation.deleteConversation.useMutation()
 
@@ -69,7 +94,7 @@ export function AppSidebar({
 
   const handleNewChat = async () => {
     try {
-      const result = await createConversation.mutateAsync({ title: 'New Chat' })
+      const result = await createConversation.mutateAsync({ title: 'New Chat' , profileId: activeProfileId! })
       router.push(`/chat/${result.id}`)
       onSelectConversation(result.id)
     } catch (error) {
@@ -97,12 +122,12 @@ export function AppSidebar({
       {/* Header: toggle | title | settings */}
       <SidebarHeader className="px-3 pt-3 pb-0">
         <div className="flex items-center">
-          <button
+          {/* <button
             onClick={toggleSidebar}
             className="p-1.5 rounded-md hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
           >
             <PanelLeft className="w-4 h-4" />
-          </button>
+          </button> */}
           <div className="flex-1 flex justify-center gap-x-2">
           <MessageSquareDot className='h-5 w-5'/>
             <h1 className="text-base font-semibold tracking-tight pr-7">Muxai</h1>
@@ -176,14 +201,49 @@ export function AppSidebar({
       {/* Footer: avatar left, add-user right */}
       <SidebarFooter className="px-3 pb-3 pt-2">
         {session?.user ? (
-          <div className="flex items-center justify-between">
-              
-            <NavUser user={{
-              image: session.user.image || null,
-              name: session.user.name || null,
-              email: session.user.email || null,
-            }} />
-           
+          <div className="flex flex-col gap-2">
+            {/* Profile Selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2 w-full px-2 py-1.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent rounded-md transition-colors text-left">
+                  <div className="w-5 h-5 rounded-full border border-primary/50 flex items-center justify-center shrink-0">
+                    <User className="w-3 h-3 text-primary" />
+                  </div>
+                  <span className="truncate flex-1">
+                    {activeProfile?.name || 'Loading profile...'}
+                  </span>
+                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" className="w-[200px]">
+                <p className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Active Profile
+                </p>
+                {profiles.map((profile) => (
+                  <DropdownMenuItem 
+                    key={profile.id}
+                    onClick={() => onSelectProfile(profile.id)}
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <div className={`w-2 h-2 rounded-full ${profile.id === activeProfileId ? 'bg-primary' : 'bg-transparent'}`} />
+                    {profile.name}
+                  </DropdownMenuItem>
+                ))}
+                {profiles.length === 0 && (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground italic">
+                    No profiles found
+                  </p>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <div className="flex items-center justify-between">
+              <NavUser user={{
+                image: session.user.image || null,
+                name: session.user.name || null,
+                email: session.user.email || null,
+              }} />
+            </div>
           </div>
         ) : (
           <Button

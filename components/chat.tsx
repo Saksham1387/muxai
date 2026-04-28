@@ -1,7 +1,7 @@
 'use client'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
-import { Bot, Brain, ChevronDown, ChevronRight } from 'lucide-react'
+import { Brain, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { trpc } from '@/server/client-trpc'
 import Image from 'next/image'
@@ -9,6 +9,7 @@ import { useSession } from 'next-auth/react'
 import { DEFAULT_MODEL } from '@/lib/config'
 import { InputModel } from './input-box'
 import Markdown from 'react-markdown'
+import { useRouter } from 'next/navigation'
 
 const ReasoningBlock = ({ children }: { children: React.ReactNode }) => {
   const [isOpen, setIsOpen] = useState(false)
@@ -41,10 +42,12 @@ const QUICK_PROMPTS = [
 
 interface ChatProps {
   conversationId: string
+  activeProfileId?: string | null
   onTitleUpdate?: (title: string) => void
+  onConversationCreated?: (id: string) => void
 }
 
-export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
+export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConversationCreated }: ChatProps) {
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
   const [input, setInput] = useState('')
   const [isFirstMessage, setIsFirstMessage] = useState(true)
@@ -53,6 +56,7 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { data: session } = useSession()
   const utils = trpc.useUtils()
+  const router = useRouter()
 
   const { data: conversationWithMessages, isLoading } = trpc.conversation.getById.useQuery(
     { id: conversationId },
@@ -60,6 +64,7 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
   )
 
   const createMessage = trpc.message.createMessage.useMutation()
+  const createConversation = trpc.conversation.createConversation.useMutation()
   const updateTitle = trpc.conversation.updateTitle.useMutation({
     onSuccess: () => {
       utils.conversation.getAllConversations.invalidate()
@@ -74,6 +79,8 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
     transport,
     onFinish: async ({ message, messages: allMessages }) => {
       console.log(message)
+      if (conversationId === 'new') return; // Don't save if we don't have an ID yet
+
       const textContent = message.parts
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map(part => part.text)
@@ -84,14 +91,18 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
         .map((part: any) => part.reasoning || part.text || '')
         .join('')
 
-      await createMessage.mutateAsync({
-        content: textContent,
-        role: 'assistant',
-        model: selectedModel.id,
-        conversationId,
-        reasoningText: reasoningContent || undefined,
-        hasReasoned: !!reasoningContent
-      })
+      try {
+        await createMessage.mutateAsync({
+          content: textContent,
+          role: 'assistant',
+          model: selectedModel.id,
+          conversationId,
+          reasoningText: reasoningContent || undefined,
+          hasReasoned: !!reasoningContent
+        })
+      } catch (error) {
+        console.error('Failed to save assistant message:', error)
+      }
 
       if (!hasTitleBeenGenerated && allMessages.length >= 1) {
         const firstUserMessage = allMessages.find(m => m.role === 'user')
@@ -187,15 +198,43 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
     if (!text.trim()) return
 
     setIsFirstMessage(false)
+    let currentConversationId = conversationId
 
     // Save user message to database if we have a valid conversation
-    if (conversationId && conversationId !== 'new') {
+    if (currentConversationId === 'new') {
+      if (!activeProfileId) {
+        console.error('No active profile selected')
+        return
+      }
+      try {
+        const newConversation = await createConversation.mutateAsync({
+          title: 'New Chat',
+          profileId: activeProfileId
+        })
+        currentConversationId = newConversation.id
+        onConversationCreated?.(currentConversationId)
+        
+        // Save the first message
+        await createMessage.mutateAsync({
+          content: text,
+          role: 'user',
+          model: selectedModel.id,
+          conversationId: currentConversationId
+        })
+        
+        // Redirect to the new conversation URL
+        router.push(`/chat/${currentConversationId}`)
+      } catch (error) {
+        console.error('Failed to create conversation or save message:', error)
+        return
+      }
+    } else {
       try {
         await createMessage.mutateAsync({
           content: text,
           role: 'user',
           model: selectedModel.id,
-          conversationId
+          conversationId: currentConversationId
         })
       } catch (error) {
         console.error('Failed to save user message:', error)
@@ -207,7 +246,8 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
       {
         body: {
           model: selectedModel.id,
-          conversationId: conversationId,
+          conversationId: currentConversationId,
+          profileId: activeProfileId,
         },
       },
     )
@@ -313,7 +353,7 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
       </div>
 
       <div className="bg-background px-6 py-4 shrink-0">
-       <InputModel handleSubmit={handleSubmit} input={input} selectedModel={selectedModel} setInput={setInput} setSelectedModel={setSelectedModel} textareaRef={textareaRef} isStreaming={isStreaming}/>
+       <InputModel handleSubmit={handleSubmit} input={input} selectedModel={selectedModel} setInput={setInput} setSelectedModel={setSelectedModel} textareaRef={textareaRef} isStreaming={isStreaming} isLoggedIn={!!session}/>
       </div>
     </div>
   )

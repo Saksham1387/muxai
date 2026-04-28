@@ -100,7 +100,7 @@ export function ModelSelector({ selectedModel, onSelectModel, trigger }: ModelSe
                   className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
                     selectedProvider === provider.provider
                       ? 'bg-primary text-primary-foreground'
-                      : 'bg-background hover:bg-muted text-muted-foreground hover:text-foreground'
+                      : 'bg-background hover:bg-muted text-muted-foreground hover:text-foreground '
                   }`}
                   title={provider.name}
                 >
@@ -124,7 +124,8 @@ export function ModelSelector({ selectedModel, onSelectModel, trigger }: ModelSe
                           selectedModel.id === model.id
                             ? 'border-primary bg-accent'
                             : 'border-transparent bg-card hover:border-border'
-                        }`}
+                        } `}
+                        disabled={model.disabled ? true: false}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-start gap-2.5 flex-1 min-w-0">

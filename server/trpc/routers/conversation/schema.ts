@@ -5,7 +5,8 @@ export const getByIdSchema = z.object({
 });
 
 export const createConversation = z.object({
-    title: z.string()
+    title: z.string(),
+    profileId: z.string()
 })
 
 export const deleteConversationSchema = z.object({

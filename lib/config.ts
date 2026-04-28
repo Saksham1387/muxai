@@ -7,13 +7,13 @@ export const SUPPORTED_MODELS = [
         {id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro'},
     ]},
     {provider:'openai', name: "OpenAI", models:[
-        {id: 'openai/gpt-4o-mini', name: 'GPT-4o-mini'},
-        {id: 'openai/gpt-5.2',name:'GPT-5-mini'},
+        {id: 'openai/gpt-4o-mini', name: 'GPT-4o-mini', disabled:true},
+        {id: 'openai/gpt-5.2',name:'GPT-5-mini',disabled:true},
         {id: 'openai/gpt-oss-20b:free:thinking', name:'GPT OSS 20B'},
-        {id: 'openai/o1', name: 'O1'}
+        {id: 'openai/o1', name: 'O1',disabled:true}
     ]},
     {provider:'anthropic', name: "Anthropic", models:[
-        {id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5'},
+        {id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5',disabled:true},
     ]}
 ]
 

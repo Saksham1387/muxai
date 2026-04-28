@@ -11,7 +11,16 @@ export default function ChatPage() {
   const router = useRouter()
   const conversationId = params.id as string
   const [activeConversation, setActiveConversation] = useState<string | null>(conversationId)
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null)
   const utils = trpc.useUtils()
+
+  const { data: profiles } = trpc.profile.listProfiles.useQuery()
+
+  useEffect(() => {
+    if (profiles && profiles.length > 0 && !activeProfileId) {
+      setActiveProfileId(profiles[0].id)
+    }
+  }, [profiles, activeProfileId])
 
   useEffect(() => {
     setActiveConversation(conversationId)
@@ -34,6 +43,8 @@ export default function ChatPage() {
       <AppSidebar
         activeConversation={activeConversation}
         onSelectConversation={handleSelectConversation}
+        activeProfileId={activeProfileId}
+        onSelectProfile={setActiveProfileId}
       />
       <SidebarInset className="flex flex-col h-screen">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
@@ -43,6 +54,7 @@ export default function ChatPage() {
         <div className="flex-1 overflow-hidden">
           <Chat
             conversationId={conversationId}
+            activeProfileId={activeProfileId}
             onTitleUpdate={handleTitleUpdate}
           />
         </div>

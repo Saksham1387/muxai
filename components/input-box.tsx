@@ -10,30 +10,32 @@ interface InputModelProps {
    handleSubmit: (e: React.FormEvent) => void
      isStreaming: boolean
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
+  isLoggedIn: boolean
 }
 
 export const InputModel = ({handleSubmit,input,
-    setInput,setSelectedModel,selectedModel,isStreaming,textareaRef
+    setInput,setSelectedModel,selectedModel,isStreaming,textareaRef,isLoggedIn
 }:InputModelProps) => {
     return (
 
         <div className="max-w-3xl mx-auto">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={isLoggedIn ? handleSubmit : (e) => e.preventDefault()}>
           {/* Single unified input box */}
           <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
             {/* Text Area */}
             <textarea
               ref={textareaRef}
-              placeholder="Type your message here..."
+              placeholder={isLoggedIn ? "Type your message here..." : "Sign in to start chatting..."}
               value={input}
+              disabled={!isLoggedIn}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === 'Enter' && !e.shiftKey && isLoggedIn) {
                   e.preventDefault()
                   handleSubmit(e)
                 }
               }}
-              className="w-full bg-transparent text-foreground placeholder:text-muted-foreground resize-none focus:outline-none px-4 pt-4 pb-2 text-[15px] min-h-[56px]"
+              className="w-full bg-transparent text-foreground placeholder:text-muted-foreground resize-none focus:outline-none px-4 pt-4 pb-2 text-[15px] min-h-[56px] disabled:cursor-not-allowed disabled:opacity-50"
               rows={1}
               style={{ maxHeight: '200px' }}
             />
@@ -48,21 +50,21 @@ export const InputModel = ({handleSubmit,input,
                 />
 
                 {/* Attachment Button */}
-                <Button
+                {/* <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="h-8 w-8 p-0 rounded-full hover:bg-muted"
                 >
                   <Paperclip className="w-4 h-4" />
-                </Button>
+                </Button> */}
               </div>
 
               {/* Send Button */}
               <Button
                 type="submit"
                 size="sm"
-                disabled={!input.trim() || isStreaming}
+                disabled={!isLoggedIn || !input.trim() || isStreaming}
                 className="h-8 w-8 p-0 rounded-md"
               >
                 <Forward className="w-4 h-4" />

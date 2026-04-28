@@ -2,37 +2,51 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useState, useRef, KeyboardEvent } from 'react'
+import { useState, useRef, KeyboardEvent, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import {
-  ArrowLeft
+  ArrowLeft,
+  ChevronDown,
+  Plus,
+  X
 } from 'lucide-react'
 import { DEFAULT_MODEL } from '@/lib/config'
+import { trpc } from '@/server/client-trpc'
+import { toast } from 'sonner'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 const TABS = [
-  'Account'
+  'Account',
+  'Customization'
 ] as const
 
 type Tab = (typeof TABS)[number]
 
 const SUGGESTED_TRAITS = ['friendly', 'witty', 'concise', 'curious', 'empathetic', 'creative', 'patient']
 
-// const SHORTCUTS = [
-//   { label: 'Search', keys: ['⌘', 'K'] },
-//   { label: 'New Chat', keys: ['⌘', '⇧', 'O'] },
-//   { label: 'Toggle Sidebar', keys: ['⌘', 'B'] },
-//   { label: 'Open Model Picker', keys: ['⌘', '/'] },
-//   { label: 'Delete Current Chat', keys: ['⌘', '⇧', '⌫'] },
-// ]
-
 export default function SettingsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<Tab>('Account')
+  const utils = trpc.useUtils()
 
   // Customization state
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [occupation, setOccupation] = useState('')
   const [traits, setTraits] = useState<string[]>([])
@@ -40,6 +54,85 @@ export default function SettingsPage() {
   const [additionalInfo, setAdditionalInfo] = useState('')
   const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL.id)
   const traitInputRef = useRef<HTMLInputElement>(null)
+
+  // Profile creation state
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [newProfileName, setNewProfileName] = useState('')
+
+  const { data: profiles } = trpc.profile.listProfiles.useQuery(undefined, {
+    enabled: status === 'authenticated'
+  })
+
+  // Auto-select first profile on load
+  useEffect(() => {
+    if (profiles && profiles.length > 0 && !selectedProfileId) {
+      handleProfileSelect(profiles[0])
+    }
+  }, [profiles])
+
+  const createProfile = trpc.profile.createProfile.useMutation({
+    onSuccess: (newProfile) => {
+      utils.profile.listProfiles.invalidate()
+      setSelectedProfileId(newProfile.id)
+      setDisplayName('')
+      setOccupation('')
+      setTraits([])
+      setAdditionalInfo('')
+      setIsDialogOpen(false)
+      setNewProfileName('')
+      toast.success('New profile created')
+    }
+  })
+
+  const updatePreferences = trpc.profile.updatePreferences.useMutation({
+    onSuccess: () => {
+      toast.success('Preferences saved')
+    }
+  })
+
+  const handleProfileSelect = (profile: any) => {
+    setSelectedProfileId(profile.id)
+    const prefs = profile.prefrences as any
+    if (prefs) {
+      setDisplayName(prefs.userName || '')
+      setOccupation(prefs.userOccupation || '')
+      setTraits(prefs.preferredTraits ? prefs.preferredTraits.split(',').filter(Boolean) : [])
+      setAdditionalInfo(prefs.userDescription || '')
+    } else {
+      setDisplayName('')
+      setOccupation('')
+      setTraits([])
+      setAdditionalInfo('')
+    }
+  }
+
+  const handleSave = async () => {
+    if (!selectedProfileId) {
+      toast.error('Please select or create a profile first')
+      return
+    }
+
+    try {
+      await updatePreferences.mutateAsync({
+        id: selectedProfileId,
+        userName: displayName,
+        userOccupation: occupation,
+        preferredTraits: traits.join(','),
+        userDescription: additionalInfo
+      })
+    } catch (error) {
+      console.error('Failed to save preferences:', error)
+      toast.error('Failed to save preferences')
+    }
+  }
+
+  const handleCreateProfile = async () => {
+    if (!newProfileName.trim()) {
+      toast.error('Profile name is required')
+      return
+    }
+    await createProfile.mutateAsync({ name: newProfileName })
+  }
 
   if (status === 'loading') {
     return (
@@ -208,7 +301,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* {activeTab === 'Customization' && (
+          {activeTab === 'Customization' && (
             <div>
               <h2 className="text-xl font-semibold mb-6">Customize Muxai</h2>
 
@@ -217,12 +310,36 @@ export default function SettingsPage() {
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">Profile</label>
                   <div className="flex gap-2">
-                    <div className="flex-1 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2.5">
-                      <div className="w-3 h-3 rounded-full border-2 border-primary" />
-                      <span className="text-sm">Default</span>
-                      <ChevronDown className="w-4 h-4 text-muted-foreground ml-auto" />
-                    </div>
-                    <Button variant="outline" size="icon" className="shrink-0 h-10 w-10">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <div className="flex-1 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors">
+                          <div className="w-3 h-3 rounded-full border-2 border-primary" />
+                          <span className="text-sm">
+                            {profiles?.find(p => p.id === selectedProfileId)?.name || 'Select a profile'}
+                          </span>
+                          <ChevronDown className="w-4 h-4 text-muted-foreground ml-auto" />
+                        </div>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                        {profiles?.map((profile) => (
+                          <DropdownMenuItem 
+                            key={profile.id}
+                            onClick={() => handleProfileSelect(profile)}
+                          >
+                            {profile.name}
+                          </DropdownMenuItem>
+                        ))}
+                        {profiles?.length === 0 && (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">No profiles found</div>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className="shrink-0 h-10 w-10"
+                      onClick={() => setIsDialogOpen(true)}
+                    >
                       <Plus className="w-4 h-4" />
                     </Button>
                   </div>
@@ -340,15 +457,56 @@ export default function SettingsPage() {
 
                
                 <div className="flex justify-end">
-                  <Button className="px-6">Save Preferences</Button>
+                  <Button 
+                    className="px-6" 
+                    onClick={handleSave}
+                    disabled={updatePreferences.isPending}
+                  >
+                    {updatePreferences.isPending ? 'Saving...' : 'Save Preferences'}
+                  </Button>
                 </div>
               </div>
             </div>
-          )} */}
+          )}
 
           
         </main>
       </div>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create Profile</DialogTitle>
+            <DialogDescription>
+              Give your new profile a name to get started with custom preferences.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label htmlFor="name" className="text-sm font-medium">
+                Name
+              </label>
+              <Input
+                id="name"
+                placeholder="e.g. Work, Creative, Coding"
+                value={newProfileName}
+                onChange={(e) => setNewProfileName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateProfile()
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateProfile} disabled={createProfile.isPending}>
+              {createProfile.isPending ? 'Creating...' : 'Create Profile'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

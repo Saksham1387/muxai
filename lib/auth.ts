@@ -1,7 +1,7 @@
 import NextAuth from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 import { PrismaAdapter } from "@auth/prisma-adapter"
-import { prisma } from "./prisma"
+import  {prisma}  from "./prisma"
 
 export const authOptions = {
   adapter: PrismaAdapter(prisma),
@@ -27,9 +27,17 @@ export const authOptions = {
       }
       return session;
     },
-    
   },
- 
+  events: {
+    async createUser({ user }:any) {
+      await prisma.profile.create({
+        data: {
+          name: 'default',
+          userId: user.id,
+        },
+      })
+    },
+  },
 }
 
 export default NextAuth(authOptions)
