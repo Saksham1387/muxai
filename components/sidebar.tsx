@@ -6,27 +6,42 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuButton,
+  useSidebar,
 } from '@/components/ui/sidebar'
-import { Plus, Search, LogOut, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { Search, LogOut, Trash2, PanelLeft, MessageSquareDot } from 'lucide-react'
+import { useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { NavUser } from './nav-user'
 import { trpc } from '@/server/client-trpc'
-
-interface Conversation {
-  id: string
-  title: string
-  createdAt: Date
-}
+import { NavUser } from './nav-user'
 
 interface SidebarProps {
   activeConversation: string | null
   onSelectConversation: (id: string | null) => void
+}
+
+function groupConversationsByTime(conversations: { id: string; title: string; createdAt: Date }[]) {
+  const now = new Date()
+  const dayMs = 86400000
+  const sevenDaysAgo = new Date(now.getTime() - 7 * dayMs)
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * dayMs)
+
+  const groups: { label: string; items: typeof conversations }[] = []
+
+  const last7 = conversations.filter(c => new Date(c.createdAt) >= sevenDaysAgo)
+  const last30 = conversations.filter(
+    c => new Date(c.createdAt) < sevenDaysAgo && new Date(c.createdAt) >= thirtyDaysAgo
+  )
+  const older = conversations.filter(c => new Date(c.createdAt) < thirtyDaysAgo)
+
+  if (last7.length) groups.push({ label: 'Last 7 Days', items: last7 })
+  if (last30.length) groups.push({ label: 'Last 30 Days', items: last30 })
+  if (older.length) groups.push({ label: 'Older', items: older })
+
+  return groups
 }
 
 export function AppSidebar({
@@ -35,9 +50,10 @@ export function AppSidebar({
 }: SidebarProps) {
   const { data: session } = useSession()
   const router = useRouter()
+  const { toggleSidebar } = useSidebar()
   const [searchQuery, setSearchQuery] = useState('')
 
-  const { data: conversations = [], isLoading } = trpc.conversation.getAllConversations.useQuery()
+  const { data: conversations = [] } = trpc.conversation.getAllConversations.useQuery()
   const createConversation = trpc.conversation.createConversation.useMutation()
   const deleteConversation = trpc.conversation.deleteConversation.useMutation()
 
@@ -45,11 +61,15 @@ export function AppSidebar({
     conv.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const grouped = useMemo(
+    () => groupConversationsByTime(filteredConversations),
+    [filteredConversations]
+  )
+
+
   const handleNewChat = async () => {
     try {
-      const result = await createConversation.mutateAsync({
-        title: 'New Chat'
-      })
+      const result = await createConversation.mutateAsync({ title: 'New Chat' })
       router.push(`/chat/${result.id}`)
       onSelectConversation(result.id)
     } catch (error) {
@@ -59,10 +79,7 @@ export function AppSidebar({
 
   const handleDeleteConversation = async (e: React.MouseEvent, convId: string) => {
     e.stopPropagation()
-
-    if (!confirm('Are you sure you want to delete this conversation?')) {
-      return
-    }
+    if (!confirm('Are you sure you want to delete this conversation?')) return
 
     try {
       await deleteConversation.mutateAsync({ id: convId })
@@ -77,88 +94,102 @@ export function AppSidebar({
 
   return (
     <Sidebar>
-      <SidebarHeader className="p-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold">Muxai</h1>
+      {/* Header: toggle | title | settings */}
+      <SidebarHeader className="px-3 pt-3 pb-0">
+        <div className="flex items-center">
+          <button
+            onClick={toggleSidebar}
+            className="p-1.5 rounded-md hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+          <div className="flex-1 flex justify-center gap-x-2">
+          <MessageSquareDot className='h-5 w-5'/>
+            <h1 className="text-base font-semibold tracking-tight pr-7">Muxai</h1>
+           
+          </div>
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2">
-        {/* New Chat Button */}
-        <div className="p-2">
-          <Button
-            onClick={handleNewChat}
-            disabled={createConversation.isPending}
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Chat
-          </Button>
-        </div>
+      <SidebarContent className="px-3 pt-3">
+        {/* New Chat */}
+        <Button
+          onClick={handleNewChat}
+          disabled={createConversation.isPending}
+          className="w-full h-9 bg-primary/80 hover:bg-primary text-primary-foreground rounded-lg text-sm font-medium"
+        >
+          New Chat
+        </Button>
 
         {/* Search */}
-        <div className="px-2 pb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-            <SidebarInput
-              placeholder="Search your threads..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
+        <div className="relative mt-3">
+          <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            placeholder="Search your threads..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full bg-transparent text-sm text-sidebar-foreground placeholder:text-muted-foreground pl-6 pr-2 py-1.5 border-b border-sidebar-border focus:outline-none focus:border-sidebar-primary transition-colors"
+          />
         </div>
 
-        {/* Conversations */}
-        <ScrollArea className="flex-1">
-          <SidebarMenu>
-            {filteredConversations.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4 px-3">
-                No conversations yet
-              </p>
-            ) : (
-              filteredConversations.map(conv => (
-                <SidebarMenuItem key={conv.id}>
-                  <SidebarMenuButton
-                    isActive={activeConversation === conv.id}
-                    onClick={() => {
-                      router.push(`/chat/${conv.id}`)
-                      onSelectConversation(conv.id)
-                    }}
-                    className="w-full justify-between group"
-                  >
-                    <div className="flex-1 text-left min-w-0">
-                      <div className="truncate font-medium">{conv.title}</div>
-                    </div>
-                    <button
-                      onClick={(e) => handleDeleteConversation(e, conv.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded flex-shrink-0"
-                      disabled={deleteConversation.isPending}
-                    >
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </button>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))
-            )}
-          </SidebarMenu>
+        {/* Conversations grouped by time */}
+        <ScrollArea className="flex-1 mt-2 -mx-1">
+          {grouped.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No conversations yet
+            </p>
+          ) : (
+            <SidebarMenu>
+              {grouped.map(group => (
+                <div key={group.label}>
+                  <p className="text-xs font-medium text-primary px-2 pt-4 pb-1.5">
+                    {group.label}
+                  </p>
+                  {group.items.map(conv => (
+                    <SidebarMenuItem key={conv.id}>
+                      <SidebarMenuButton
+                        isActive={activeConversation === conv.id}
+                        onClick={() => {
+                          router.push(`/chat/${conv.id}`)
+                          onSelectConversation(conv.id)
+                        }}
+                        className="w-full justify-between group/item h-8 px-2 relative"
+                      >
+                        <span className="truncate text-sm">{conv.title}</span>
+                        <button
+                          onClick={e => handleDeleteConversation(e, conv.id)}
+                          className="opacity-0 -translate-x-4 group-hover/item:opacity-100 group-hover/item:translate-x-0 transition-all duration-300 ease-in-out p-0.5 hover:bg-destructive/20 rounded shrink-0"
+                          disabled={deleteConversation.isPending}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </div>
+              ))}
+            </SidebarMenu>
+          )}
         </ScrollArea>
       </SidebarContent>
 
-      <SidebarFooter className="p-2">
+      {/* Footer: avatar left, add-user right */}
+      <SidebarFooter className="px-3 pb-3 pt-2">
         {session?.user ? (
-          <NavUser
-            user={{
-              name: session.user?.name!,
-              avatar: session.user?.image!,
-              email: session.user?.email!
-            }}
-          />
+          <div className="flex items-center justify-between">
+              
+            <NavUser user={{
+              image: session.user.image || null,
+              name: session.user.name || null,
+              email: session.user.email || null,
+            }} />
+           
+          </div>
         ) : (
           <Button
             variant="ghost"
-            className="w-full justify-start"
-            onClick={() => window.location.href = '/auth'}
+            className="w-full justify-start text-sm"
+            onClick={() => (window.location.href = '/auth')}
           >
             <LogOut className="w-4 h-4 mr-2" />
             Login

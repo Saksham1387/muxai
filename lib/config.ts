@@ -8,11 +8,13 @@ export const SUPPORTED_MODELS = [
     ]},
     {provider:'openai', name: "OpenAI", models:[
         {id: 'openai/gpt-4o-mini', name: 'GPT-4o-mini'},
-        {id: 'openai/gpt-5.2',name:'GPT-5-mini'}
+        {id: 'openai/gpt-5.2',name:'GPT-5-mini'},
+        {id: 'openai/gpt-oss-20b:free:thinking', name:'GPT OSS 20B'},
+        {id: 'openai/o1', name: 'O1'}
     ]},
     {provider:'anthropic', name: "Anthropic", models:[
         {id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5'},
     ]}
 ]
 
-export const DEFAULT_MODEL = SUPPORTED_MODELS[0].models[0]
+export const DEFAULT_MODEL = SUPPORTED_MODELS[2].models[2]

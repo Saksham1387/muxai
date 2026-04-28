@@ -1,14 +1,36 @@
 'use client'
-
 import { useChat } from '@ai-sdk/react'
-import { Button } from '@/components/ui/button'
-import { Send, Bot, Paperclip } from 'lucide-react'
-import { useState, useEffect, useRef } from 'react'
+import { DefaultChatTransport } from 'ai'
+import { Bot, Brain, ChevronDown, ChevronRight } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { trpc } from '@/server/client-trpc'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { DEFAULT_MODEL } from '@/lib/config'
-import { ModelSelector } from '@/components/model-selector'
+import { InputModel } from './input-box'
+import Markdown from 'react-markdown'
+
+const ReasoningBlock = ({ children }: { children: React.ReactNode }) => {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <div className="mb-3 border-l-2 border-muted pl-4 py-1">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        <Brain className='w-4 h-4'/>
+        <span>Reasoning</span>
+      </button>
+      {isOpen && (
+        <div className="mt-2 text-sm text-muted-foreground italic">
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const QUICK_PROMPTS = [
   'How does AI work?',
@@ -44,31 +66,41 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
     }
   })
 
+  const transport = useMemo(() => new DefaultChatTransport({
+    api: '/api/chat',
+  }), [])
+
   const { messages, setMessages, sendMessage, status } = useChat({
-    onFinish: async (message) => {
+    transport,
+    onFinish: async ({ message, messages: allMessages }) => {
       console.log(message)
-      const textContent = message.message.parts
-        .filter(part => part.type === 'text')
+      const textContent = message.parts
+        .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map(part => part.text)
+        .join('')
+      
+      const reasoningContent = message.parts
+        .filter((part): any => part.type === 'reasoning')
+        .map((part: any) => part.reasoning || part.text || '')
         .join('')
 
       await createMessage.mutateAsync({
         content: textContent,
         role: 'assistant',
         model: selectedModel.id,
-        conversationId
+        conversationId,
+        reasoningText: reasoningContent || undefined,
+        hasReasoned: !!reasoningContent
       })
 
-      // Auto-generate title after first assistant response
-      if (!hasTitleBeenGenerated && messages.length >= 1) {
-        const firstUserMessage = messages.find(m => m.role === 'user')
+      if (!hasTitleBeenGenerated && allMessages.length >= 1) {
+        const firstUserMessage = allMessages.find(m => m.role === 'user')
         if (firstUserMessage) {
           const userContent = firstUserMessage.parts
-            .filter(part => part.type === 'text')
+            .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
             .map(part => part.text)
             .join('')
 
-          // Generate a smart title from the first message
           const generatedTitle = generateTitle(userContent, textContent)
 
           try {
@@ -128,12 +160,18 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
 
     if (conversationWithMessages?.messages) {
       console.log('Debug - raw messages:', conversationWithMessages.messages)
-      const formattedMessages = conversationWithMessages.messages.map(msg => ({
-        id: msg.id,
-        role: msg.role.toLowerCase() as 'user' | 'assistant',
-        content: msg.content,
-        parts: [{ type: 'text' as const, text: msg.content }]
-      }))
+      const formattedMessages = conversationWithMessages.messages.map(msg => {
+        const parts: any[] = [{ type: 'text' as const, text: msg.content }];
+        if (msg.reasoningText) {
+          parts.unshift({ type: 'reasoning' as const, text: msg.reasoningText });
+        }
+        return {
+          id: msg.id,
+          role: msg.role.toLowerCase() as 'user' | 'assistant',
+          content: msg.content,
+          parts
+        };
+      })
       console.log('Debug - formattedMessages:', formattedMessages)
       setMessages(formattedMessages)
       setIsFirstMessage(conversationWithMessages.messages.length === 0)
@@ -164,13 +202,15 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
       }
     }
 
-    sendMessage({
-      text,
-      metadata: {
-        model: selectedModel.id,
-        conversationId: conversationId
-      }
-    })
+    sendMessage(
+      { text },
+      {
+        body: {
+          model: selectedModel.id,
+          conversationId: conversationId,
+        },
+      },
+    )
 
     setInput('')
   }
@@ -188,19 +228,17 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Messages Area - Scrollable */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-3xl mx-auto">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <h2 className="text-3xl font-semibold text-foreground mb-8">How can I help you?</h2>
-              {/* Quick Prompts */}
+            <div className="flex flex-col items-start justify-center min-h-[60vh] text-center pl-10">
+              <h2 className="text-3xl font-semibold text-foreground mb-8 ">How can I help you, {session?.user.name} ?</h2>
               <div className="space-y-3 w-full max-w-lg">
                 {QUICK_PROMPTS.map((prompt, index) => (
                   <button
                     key={index}
                     onClick={() => handleQuickPrompt(prompt)}
-                    className="block w-full text-left text-foreground/80 hover:text-foreground transition-colors py-2 text-base"
+                    className="block w-full text-left text-foreground/80 hover:text-foreground transition-colors py-3.5 px-4 text-base rounded-none hover:bg-muted/50 border-b border-primary/10"
                   >
                     {prompt}
                   </button>
@@ -214,99 +252,68 @@ export function Chat({ conversationId, onTitleUpdate }: ChatProps) {
                   key={message.id}
                   className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {message.role !== 'user' && (
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                  {/* {message.role !== 'user' && (
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 ">
                       <Bot className="w-4 h-4 text-primary" />
                     </div>
-                  )}
+                  )} */}
                   <div
-                    className={`max-w-xl px-4 py-3 rounded-2xl ${message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-foreground'
+                    className={`max-w-[85%] ${message.role === 'user'
+                      ? 'bg-muted text-primary-foreground px-4 py-3 rounded-2xl'
+                      : 'text-foreground'
                       }`}
                   >
-                    <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
+                    <div className="text-[15px] leading-relaxed">
                       {message.parts.map((part, i) => {
                         switch (part.type) {
                           case 'text':
-                            return <span key={`${message.id}-${i}`}>{part.text}</span>;
+                            return <Markdown key={`${message.id}-${i}`}>{part.text}</Markdown>;
+                          case 'reasoning':
+                            const reasoningText = (part as any).reasoning || (part as any).text;
+                            return reasoningText ? (
+                              <ReasoningBlock key={`${message.id}-${i}`}>
+                                <Markdown>{reasoningText}</Markdown>
+                              </ReasoningBlock>
+                            ) : null;
                         }
                       })}
                     </div>
                   </div>
                   {message.role === 'user' && session?.user?.image && (
-                    <Image
-                      src={session.user.image}
-                      alt="user"
-                      width={32}
-                      height={32}
-                      className="rounded-full shrink-0 mt-0.5"
-                    />
+                    <div className="w-8 h-8 rounded-full overflow-hidden shrink-0  border border-border/50">
+                      <Image
+                        src={session.user.image}
+                        alt="user"
+                        width={32}
+                        height={32}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                   )}
                 </div>
               ))}
+              {/* {status === 'loading' && (
+                <div className="flex gap-3 justify-start items-start">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 animate-pulse">
+                    <Bot className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="bg-muted px-4 py-3 rounded-2xl">
+                    <div className="flex gap-1.5 items-center h-5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-delay:-0.3s]"></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce [animation-delay:-0.15s]"></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce"></div>
+                    </div>
+                  </div>
+                </div>
+              )} */}
               <div ref={messagesEndRef} />
             </div>
           )}
         </div>
       </div>
 
-      {/* Footer - Fixed at bottom */}
       <div className="bg-background px-6 py-4 shrink-0">
-        <div className="max-w-3xl mx-auto">
-          <form onSubmit={handleSubmit}>
-            {/* Single unified input box */}
-            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-              {/* Text Area */}
-              <textarea
-                ref={textareaRef}
-                placeholder="Type your message here..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSubmit(e)
-                  }
-                }}
-                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground resize-none focus:outline-none px-4 pt-4 pb-2 text-[15px] min-h-[80px]"
-                rows={1}
-                style={{ maxHeight: '200px' }}
-              />
-
-              {/* Bottom Controls Bar */}
-              <div className="flex items-center justify-between px-3 py-2.5 border-t border-border/50 bg-muted/20">
-                <div className="flex items-center gap-2">
-                  {/* Model Selector */}
-                  <ModelSelector
-                    selectedModel={selectedModel}
-                    onSelectModel={setSelectedModel}
-                  />
-
-                  {/* Attachment Button */}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 rounded-full hover:bg-muted"
-                  >
-                    <Paperclip className="w-4 h-4" />
-                  </Button>
-                </div>
-
-                {/* Send Button */}
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={!input.trim() || isStreaming}
-                  className="h-8 w-8 p-0 rounded-full"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </form>
-        </div>
+       <InputModel handleSubmit={handleSubmit} input={input} selectedModel={selectedModel} setInput={setInput} setSelectedModel={setSelectedModel} textareaRef={textareaRef} isStreaming={isStreaming}/>
       </div>
     </div>
   )

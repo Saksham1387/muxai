@@ -80,7 +80,9 @@ model Message {
   model String // This will be the model id
   content String
   role MessageRole
-
+  hasReasoned Boolean @default(false)
+  reasoningText String?
+  
   conversationId String 
   conversation Conversation @relation(fields: [conversationId],references: [id])
 }

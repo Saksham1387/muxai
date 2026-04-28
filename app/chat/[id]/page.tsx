@@ -1,5 +1,4 @@
 'use client'
-
 import { AppSidebar } from '@/components/sidebar'
 import { Chat } from '@/components/chat'
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
@@ -27,7 +26,6 @@ export default function ChatPage() {
   }
 
   const handleTitleUpdate = (title: string) => {
-    // Invalidate the conversations query to refresh the sidebar
     utils.conversation.getAllConversations.invalidate()
   }
 
@@ -38,12 +36,10 @@ export default function ChatPage() {
         onSelectConversation={handleSelectConversation}
       />
       <SidebarInset className="flex flex-col h-screen">
-        {/* Header with Sidebar Trigger */}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
         </header>
 
-        {/* Main Chat Area - fills remaining space */}
         <div className="flex-1 overflow-hidden">
           <Chat
             conversationId={conversationId}

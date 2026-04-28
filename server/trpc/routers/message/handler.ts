@@ -11,7 +11,9 @@ export async function createMessageHandler(
       content: input.content,
       role: input.role == 'user' ? MessageRole.User : MessageRole.Assistant,
       model: input.model || 'openai/gpt-4o-mini',
-      conversationId: input.conversationId
+      conversationId: input.conversationId,
+      reasoningText: input.reasoningText,
+      hasReasoned: input.hasReasoned ?? false
     }
   });
 

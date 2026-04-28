@@ -6,6 +6,8 @@ export type Message = {
     content: string;
     role: MessageRole
     conversationId: string;
+    reasoningText: string | null;
+    hasReasoned: boolean;
 };
 
 export type Conversation = {

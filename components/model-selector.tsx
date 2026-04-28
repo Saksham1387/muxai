@@ -22,8 +22,8 @@ interface ModelSelectorProps {
 const PROVIDER_ICONS: Record<string, React.ReactNode> = {
   auto: <Zap className="w-4 h-4" />,
   google: <img src="/gemini-color.svg" alt="Google" className="w-4 h-4" />,
-  openai: <img src="/openai.svg" alt="OpenAI" className="w-4 h-4 bg-white" />,
-  anthropic: <img src="/anthropic.svg" alt="Anthropic" className="w-4 h-4 bg-white" />,
+  openai: <img src="/openai.svg" alt="OpenAI" className="w-4 h-4 rounded-sm bg-foreground/90 p-px" />,
+  anthropic: <img src="/anthropic.svg" alt="Anthropic" className="w-4 h-4 rounded-sm bg-foreground/90 p-px" />,
 }
 
 // Model descriptions
@@ -40,7 +40,7 @@ export function ModelSelector({ selectedModel, onSelectModel, trigger }: ModelSe
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedProvider, setSelectedProvider] = useState(
-    SUPPORTED_MODELS.find(p => p.models.some(m => m.id === selectedModel.id))?.provider || 'auto'
+    SUPPORTED_MODELS.find(p => p.models.some(m => m.id === selectedModel.id))?.provider || 'openai/gpt-oss-20b:free:thinking'
   )
 
   const currentProvider = SUPPORTED_MODELS.find(p => p.provider === selectedProvider)
@@ -130,7 +130,7 @@ export function ModelSelector({ selectedModel, onSelectModel, trigger }: ModelSe
                           <div className="flex items-start gap-2.5 flex-1 min-w-0">
                             {/* Model Icon */}
                             <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center shrink-0">
-                              {PROVIDER_ICONS[currentProvider?.provider || 'auto']}
+                              {PROVIDER_ICONS[currentProvider?.provider || 'openai/gpt-oss-20b:free:thinking']}
                             </div>
 
                             {/* Model Info */}

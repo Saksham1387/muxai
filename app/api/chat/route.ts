@@ -2,54 +2,58 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { streamText, UIMessage, convertToModelMessages } from 'ai';
 
-export async function POST(request: Request) {
-  const { messages }: { messages: UIMessage[] } = await request.json();
+export const maxDuration = 60;
 
-  const lastMessage = messages[messages.length - 1];
-  const metadata = lastMessage?.metadata as { model?: string, conversationId?: string } || {};
-  const { model, conversationId } = metadata;
+export async function POST(request: Request) {
+  const { messages, model, conversationId }: {
+    messages: UIMessage[];
+    model?: string;
+    conversationId?: string;
+  } = await request.json(); 
   
-  // Handle Google models separately with direct Gemini SDK
+  const modelMessages = await convertToModelMessages(messages);
+
   if (model?.startsWith('google/')) {
     const google = createGoogleGenerativeAI({
-      apiKey: process.env.GOOGLE_API_KEY
+      apiKey: process.env.GOOGLE_API_KEY,
     });
-    
-    // Extract the model name without the provider prefix
-    const geminiModel = model.replace('google/', '');
-    
+
+    const geminiModel = model === 'auto'
+      ? 'gemini-2.5-flash'
+      : model.replace('google/', '');
+
     const result = streamText({
       model: google(geminiModel),
-      messages: await convertToModelMessages(messages),
+      messages: modelMessages,
     });
 
     return result.toUIMessageStreamResponse();
   }
 
-  // Handle auto model - defaults to Gemini 2.0 Flash for best balance
-  if (model === 'auto') {
-    const google = createGoogleGenerativeAI({
-      apiKey: process.env.GOOGLE_API_KEY
-    });
-    
-    const result = streamText({
-      model: google('gemini-2.5-flash'),
-      messages: await convertToModelMessages(messages),
-    });
-
-    return result.toUIMessageStreamResponse();
-  }
-  
-  // Use OpenRouter for all other models
   const openrouter = createOpenRouter({
-    apiKey: process.env.OPENROUTER_API_KEY
+    apiKey: process.env.OPENROUTER_API_KEY,
+    headers: {
+      'X-OpenRouter-Cache': 'true',
+    },
+    
   });
 
   const result = streamText({
-    model: openrouter(model || "openai/gpt-4o-mini"),
-    messages: await convertToModelMessages(messages),
+    model: openrouter(model || 'openai/gpt-oss-20b:free:thinking'),
+    messages: modelMessages,
+    providerOptions: {
+      openrouter: {
+        reasoning: {
+          effort: 'low',
+        },
+      },
+    },
+  }); 
+
+  // You can wait for reasoning in the background without blocking the response
+  result.reasoningText.then((text) => {
+    if (text) console.log('Generated Reasoning:', text);
   });
 
-  
   return result.toUIMessageStreamResponse();
 }
