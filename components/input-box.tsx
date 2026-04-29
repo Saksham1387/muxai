@@ -1,7 +1,9 @@
 import { Forward, Paperclip, X, FileText, ImageIcon, Film, Music } from "lucide-react"
 import { ModelSelector } from "./model-selector"
 import { Button } from "./ui/button"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip"
 import { useRef } from "react"
+import type { ModelOption } from "@/lib/config"
 
 export type PendingAttachment = {
   id: string
@@ -18,8 +20,8 @@ export type PendingAttachment = {
 interface InputModelProps {
   input: string
   setInput: (value: string) => void
-  selectedModel: { id: string; name: string }
-  setSelectedModel: (model: { id: string; name: string }) => void
+  selectedModel: ModelOption
+  setSelectedModel: (model: ModelOption) => void
   handleSubmit: (e: React.FormEvent) => void
   isStreaming: boolean
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
@@ -27,6 +29,7 @@ interface InputModelProps {
   pendingAttachments: PendingAttachment[]
   onAddAttachments: (files: FileList) => void
   onRemoveAttachment: (id: string) => void
+  supportsImage: boolean
 }
 
 function getFileIcon(mimeType: string) {
@@ -45,7 +48,7 @@ function formatFileSize(bytes: number) {
 export const InputModel = ({
   handleSubmit, input, setInput, setSelectedModel, selectedModel,
   isStreaming, textareaRef, isLoggedIn,
-  pendingAttachments, onAddAttachments, onRemoveAttachment
+  pendingAttachments, onAddAttachments, onRemoveAttachment, supportsImage
 }: InputModelProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -53,7 +56,7 @@ export const InputModel = ({
 
   return (
     <div className="max-w-3xl mx-auto">
-      <form onSubmit={isLoggedIn ? handleSubmit : (e) => e.preventDefault()}>
+        <form onSubmit={isLoggedIn && !isStreaming ? handleSubmit : (e) => e.preventDefault()}>
         <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
           {/* Attachment Previews */}
           {pendingAttachments.length > 0 && (
@@ -107,7 +110,7 @@ export const InputModel = ({
             disabled={!isLoggedIn}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && isLoggedIn) {
+              if (e.key === 'Enter' && !e.shiftKey && isLoggedIn && !isStreaming) {
                 e.preventDefault()
                 handleSubmit(e)
               }
@@ -137,16 +140,29 @@ export const InputModel = ({
                   }
                 }}
               />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0 rounded-full hover:bg-muted"
-                disabled={!isLoggedIn}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Paperclip className="w-4 h-4" />
-              </Button>
+              <TooltipProvider delayDuration={0}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        
+                        className="hover:bg-muted border-primary/70 border bg-transparent"
+                        disabled={!isLoggedIn || !supportsImage}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Paperclip className="w-4 h-4" /> Attach
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {!supportsImage && (
+                    <TooltipContent side="top" className="text-xs">
+                      <p>This model doesn&apos;t support attachments. Select a different model.</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             </div>
 
             <Button

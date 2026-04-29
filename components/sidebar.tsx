@@ -165,7 +165,7 @@ export function AppSidebar({
         </div>
 
         {/* Conversations grouped by time */}
-        <ScrollArea className="flex-1 mt-2 -mx-1">
+        <ScrollArea className="flex-1 mt-2 mx-1">
           {grouped.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               No conversations yet

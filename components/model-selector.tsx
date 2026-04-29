@@ -10,11 +10,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronDown, Search, Sparkles, Star, Zap, Bot, Brain } from 'lucide-react'
-import { SUPPORTED_MODELS } from '@/lib/config'
+import { SUPPORTED_MODELS, type ModelOption } from '@/lib/config'
 
 interface ModelSelectorProps {
-  selectedModel: { id: string; name: string }
-  onSelectModel: (model: { id: string; name: string }) => void
+  selectedModel: ModelOption
+  onSelectModel: (model: ModelOption) => void
   trigger?: React.ReactNode
 }
 
@@ -48,7 +48,7 @@ export function ModelSelector({ selectedModel, onSelectModel, trigger }: ModelSe
     model.name.toLowerCase().includes(searchQuery.toLowerCase())
   ) || []
 
-  const handleSelectModel = (model: { id: string; name: string }) => {
+  const handleSelectModel = (model: ModelOption) => {
     onSelectModel(model)
     setOpen(false)
     setSearchQuery('')

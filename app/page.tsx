@@ -40,6 +40,10 @@ export default function Home() {
             conversationId={activeConversation || 'new'}
             activeProfileId={activeProfileId}
             onTitleUpdate={handleTitleUpdate}
+            onConversationCreated={(id) => {
+              setActiveConversation(id)
+              utils.conversation.getAllConversations.invalidate()
+            }}
           />
         </div>
       </SidebarInset>

@@ -56,6 +56,10 @@ export default function ChatPage() {
             conversationId={conversationId}
             activeProfileId={activeProfileId}
             onTitleUpdate={handleTitleUpdate}
+            onConversationCreated={(id) => {
+              setActiveConversation(id)
+              utils.conversation.getAllConversations.invalidate()
+            }}
           />
         </div>
       </SidebarInset>

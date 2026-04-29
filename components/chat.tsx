@@ -6,10 +6,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { trpc } from '@/server/client-trpc'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
-import { DEFAULT_MODEL } from '@/lib/config'
+import { DEFAULT_MODEL, type ModelOption } from '@/lib/config'
 import { InputModel, type PendingAttachment } from './input-box'
 import Markdown from 'react-markdown'
-import { useRouter } from 'next/navigation'
 
 const ReasoningBlock = ({ children }: { children: React.ReactNode }) => {
   const [isOpen, setIsOpen] = useState(false)
@@ -117,17 +116,23 @@ export type StoredAttachment = {
 }
 
 export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConversationCreated }: ChatProps) {
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
+  const [selectedModel, setSelectedModel] = useState<ModelOption>(DEFAULT_MODEL)
   const [input, setInput] = useState('')
   const [isFirstMessage, setIsFirstMessage] = useState(true)
   const [hasTitleBeenGenerated, setHasTitleBeenGenerated] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
   const [messageAttachments, setMessageAttachments] = useState<Record<string, StoredAttachment[]>>({})
+  const [isSending, setIsSending] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const conversationIdRef = useRef(conversationId)
   const { data: session } = useSession()
   const utils = trpc.useUtils()
-  const router = useRouter()
+
+  
+  useEffect(() => {
+    conversationIdRef.current = conversationId
+  }, [conversationId])
 
   const { data: conversationWithMessages, isLoading } = trpc.conversation.getById.useQuery(
     { id: conversationId },
@@ -206,8 +211,9 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
   const { messages, setMessages, sendMessage, status } = useChat({
     transport,
     onFinish: async ({ message, messages: allMessages }) => {
-      console.log(message)
-      if (conversationId === 'new') return; // Don't save if we don't have an ID yet
+      setIsSending(false)
+      const currentId = conversationIdRef.current
+      if (currentId === 'new') return;
 
       const textContent = message.parts
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
@@ -224,7 +230,7 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
           content: textContent,
           role: 'assistant',
           model: selectedModel.id,
-          conversationId,
+          conversationId: currentId,
           reasoningText: reasoningContent || undefined,
           hasReasoned: !!reasoningContent
         })
@@ -244,7 +250,7 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
 
           try {
             await updateTitle.mutateAsync({
-              id: conversationId,
+              id: currentId,
               title: generatedTitle
             })
             setHasTitleBeenGenerated(true)
@@ -324,6 +330,9 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() && pendingAttachments.length === 0) return
+    if (isSending || status === 'streaming' || status === 'submitted') return
+
+    setIsSending(true)
 
     const readyAttachments = pendingAttachments.filter(a => a.status === 'ready')
     const attachmentsPayload = readyAttachments.map(a => ({
@@ -340,6 +349,7 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
     if (currentConversationId === 'new') {
       if (!activeProfileId) {
         console.error('No active profile selected')
+        setIsSending(false)
         return
       }
       try {
@@ -348,6 +358,7 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
           profileId: activeProfileId
         })
         currentConversationId = newConversation.id
+        conversationIdRef.current = currentConversationId
         onConversationCreated?.(currentConversationId)
         
         const savedMsg = await createMessage.mutateAsync({
@@ -365,9 +376,10 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
           }))
         }
         
-        router.push(`/chat/${currentConversationId}`)
+        window.history.replaceState(null, '', `/chat/${currentConversationId}`)
       } catch (error) {
         console.error('Failed to create conversation or save message:', error)
+        setIsSending(false)
         return
       }
     } else {
@@ -391,7 +403,6 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
       }
     }
 
-    // Build FileUIPart[] for the AI SDK so attachments are sent to the model
     const fileParts: FileUIPart[] = readyAttachments
       .filter(a => a.url)
       .map(a => ({
@@ -401,7 +412,6 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
         url: a.url,
       }))
 
-    // Clear pending attachments (only stored in DB after message sent)
     pendingAttachments.forEach(a => {
       if (a.preview) URL.revokeObjectURL(a.preview)
     })
@@ -433,15 +443,18 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
     handleSendMessage(prompt)
   }
 
-  const isStreaming = status === 'streaming'
+  const isStreaming = status === 'streaming' || status === 'submitted' || isSending
+  const supportsImage = selectedModel.image !== false
 
+  console.log(status)
+  console.log(isStreaming)
   return (
     <div className="flex flex-col h-full bg-background">
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-3xl mx-auto">
           {messages.length === 0 ? (
             <div className="flex flex-col items-start justify-center min-h-[60vh] text-center pl-10">
-              <h2 className="text-3xl font-semibold text-foreground mb-8 ">How can I help you, {session?.user.name} ?</h2>
+              <h2 className="text-3xl font-semibold text-foreground mb-8 ">{session?.user.name ? `How can I help you, ${session?.user.name} ?`:"How can I help you ?"}</h2>
               <div className="space-y-3 w-full max-w-lg">
                 {QUICK_PROMPTS.map((prompt, index) => (
                   <button
@@ -553,7 +566,7 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
       </div>
 
       <div className="bg-background px-6 py-4 shrink-0">
-       <InputModel handleSubmit={handleSubmit} input={input} selectedModel={selectedModel} setInput={setInput} setSelectedModel={setSelectedModel} textareaRef={textareaRef} isStreaming={isStreaming} isLoggedIn={!!session} pendingAttachments={pendingAttachments} onAddAttachments={handleAddAttachments} onRemoveAttachment={handleRemoveAttachment}/>
+       <InputModel handleSubmit={handleSubmit} input={input} selectedModel={selectedModel} setInput={setInput} setSelectedModel={setSelectedModel} textareaRef={textareaRef} isStreaming={isStreaming} isLoggedIn={!!session} pendingAttachments={pendingAttachments} onAddAttachments={handleAddAttachments} onRemoveAttachment={handleRemoveAttachment} supportsImage={supportsImage}/>
       </div>
     </div>
   )
