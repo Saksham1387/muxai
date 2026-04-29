@@ -116,7 +116,7 @@ export function ModelSelector({ selectedModel, onSelectModel, trigger }: ModelSe
                   {filteredModels.length === 0 ? (
                     <p className="text-center text-muted-foreground py-6 text-sm">No models found</p>
                   ) : (
-                    filteredModels.map((model) => (
+                    filteredModels.map((model : ModelOption) => (
                       <button
                         key={model.id}
                         onClick={() => handleSelectModel(model)}
