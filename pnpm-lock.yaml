@@ -29,6 +29,9 @@ importers:
       '@openrouter/ai-sdk-provider':
         specifier: ^2.0.0
         version: 2.0.0(ai@6.0.48(zod@3.25.76))(zod@3.25.76)
+      '@openrouter/sdk':
+        specifier: ^0.12.22
+        version: 0.12.22
       '@prisma/config':
         specifier: ^7.3.0
         version: 7.3.0
@@ -732,6 +735,9 @@ packages:
 
   '@openrouter/sdk@0.1.27':
     resolution: {integrity: sha512-RH//L10bSmc81q25zAZudiI4kNkLgxF2E+WU42vghp3N6TEvZ6F0jK7uT3tOxkEn91gzmMw9YVmDENy7SJsajQ==}
+
+  '@openrouter/sdk@0.12.22':
+    resolution: {integrity: sha512-I+1C/6b5PL98Uc2OQeQy0dWc+MJ9AcUwGByjWSf7AoKk5VSVrDueAfsC65I+lakeUiTlFMCLGFEWVj2pF1OWdw==}
 
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
@@ -3765,6 +3771,10 @@ snapshots:
       zod: 3.25.76
 
   '@openrouter/sdk@0.1.27':
+    dependencies:
+      zod: 3.25.76
+
+  '@openrouter/sdk@0.12.22':
     dependencies:
       zod: 3.25.76
 

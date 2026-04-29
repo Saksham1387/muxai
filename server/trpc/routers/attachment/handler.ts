@@ -1,5 +1,6 @@
 import { TRPCError } from '@trpc/server';
-import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Context } from '../../../context';
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID!;
@@ -103,4 +104,39 @@ export async function deleteMultipleAttachmentsHandler(
       id: { in: attachments.map((a) => a.id) },
     },
   });
+}
+
+export async function getSignedUrlHandler(
+  input: { key: string },
+  ctx: Context
+) {
+  const attachment = await ctx.db.attachment.findFirst({
+    where: {
+      key: input.key,
+      message: {
+        conversation: {
+          userId: ctx.session!.user.id,
+        },
+      },
+    },
+  });
+
+  if (!attachment) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Attachment not found or you do not have access to it.',
+    });
+  }
+
+  const signedUrl = await getSignedUrl(
+    S3,
+    new GetObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: input.key,
+    }),
+    { expiresIn: 3600 } // URL valid for 1 hour
+  );
+
+  console.log(signedUrl)
+  return { url: signedUrl };
 }

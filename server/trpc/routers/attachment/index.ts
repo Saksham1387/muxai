@@ -3,11 +3,13 @@ import {
   getAttachmentsByProfileSchema,
   deleteAttachmentSchema,
   deleteMultipleAttachmentsSchema,
+  getSignedUrlSchema,
 } from './schema';
 import {
   getAttachmentsByProfileHandler,
   deleteAttachmentHandler,
   deleteMultipleAttachmentsHandler,
+  getSignedUrlHandler,
 } from './handler';
 
 export const attachmentRouter = router({
@@ -22,4 +24,8 @@ export const attachmentRouter = router({
   deleteMultiple: protectedProcedure
     .input(deleteMultipleAttachmentsSchema)
     .mutation(({ input, ctx }) => deleteMultipleAttachmentsHandler(input, ctx)),
+
+  getSignedUrl: protectedProcedure
+    .input(getSignedUrlSchema)
+    .query(({ input, ctx }) => getSignedUrlHandler(input, ctx)),
 });

@@ -47,7 +47,7 @@ interface ChatProps {
   onConversationCreated?: (id: string) => void
 }
 
-function getFileIcon(mimeType: string) {
+export function getFileIcon(mimeType: string) {
   if (mimeType.startsWith('image/')) return <ImageIcon className="w-4 h-4" />
   if (mimeType.startsWith('video/')) return <Film className="w-4 h-4" />
   if (mimeType.startsWith('audio/')) return <Music className="w-4 h-4" />
@@ -60,7 +60,54 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-type StoredAttachment = {
+function AttachmentDisplay({ att }: { att: StoredAttachment }) {
+  const { data, isLoading } = trpc.attachment.getSignedUrl.useQuery(
+    { key: att.key },
+    { staleTime: 50 * 60 * 1000 } // cache for 50 min (URL valid for 60)
+  )
+
+  const url = data?.url
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 bg-background/50 border border-border/50 rounded-lg px-3 py-2 text-xs text-muted-foreground">
+        {getFileIcon(att.mimeType)}
+        <span className="max-w-[120px] truncate">{att.fileName}</span>
+        <span className="animate-pulse">Loading...</span>
+      </div>
+    )
+  }
+
+  if (!url) return null
+
+  if (att.mimeType.startsWith('image/')) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer">
+        <img
+          src={url}
+          alt={att.fileName}
+          className="max-w-[200px] max-h-[150px] rounded-lg object-cover border border-border/50"
+        />
+      </a>
+    )
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-2 bg-background/50 border border-border/50 rounded-lg px-3 py-2 text-xs hover:bg-muted/50 transition-colors"
+    >
+      {getFileIcon(att.mimeType)}
+      <span className="max-w-[120px] truncate">{att.fileName}</span>
+      <span className="text-muted-foreground">{formatFileSize(att.size)}</span>
+      <Download className="w-3 h-3 text-muted-foreground" />
+    </a>
+  )
+}
+
+export type StoredAttachment = {
   id: string
   fileName: string
   mimeType: string
@@ -247,9 +294,6 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
 
   // Load conversation messages when conversation changes
   useEffect(() => {
-    console.log('Debug - conversationId:', conversationId)
-    console.log('Debug - conversationWithMessages:', conversationWithMessages)
-
     if (conversationWithMessages?.messages) {
       const attachmentsMap: Record<string, StoredAttachment[]> = {}
       const formattedMessages = conversationWithMessages.messages.map(msg => {
@@ -433,27 +477,7 @@ export function Chat({ conversationId, activeProfileId, onTitleUpdate, onConvers
                       <div className="flex flex-wrap gap-2 mb-2">
                         {messageAttachments[message.id].map((att) => (
                           <div key={att.id} className="group/att relative">
-                            {att.mimeType.startsWith('image/') ? (
-                              <a href={att.url} target="_blank" rel="noopener noreferrer">
-                                <img
-                                  src={att.url}
-                                  alt={att.fileName}
-                                  className="max-w-[200px] max-h-[150px] rounded-lg object-cover border border-border/50"
-                                />
-                              </a>
-                            ) : (
-                              <a
-                                href={att.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 bg-background/50 border border-border/50 rounded-lg px-3 py-2 text-xs hover:bg-muted/50 transition-colors"
-                              >
-                                {getFileIcon(att.mimeType)}
-                                <span className="max-w-[120px] truncate">{att.fileName}</span>
-                                <span className="text-muted-foreground">{formatFileSize(att.size)}</span>
-                                <Download className="w-3 h-3 text-muted-foreground" />
-                              </a>
-                            )}
+                            <AttachmentDisplay att={att} />
                           </div>
                         ))}
                       </div>

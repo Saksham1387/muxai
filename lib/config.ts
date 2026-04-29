@@ -5,6 +5,7 @@ export const SUPPORTED_MODELS = [
     {provider:'google', name: "Google", models:[
         {id: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash'},
         {id: 'google/gemini-1.5-pro', name: 'Gemini 1.5 Pro'},
+        {id:'google/gemini-3-flash-preview',name: 'Gemini 3 Flash Preview'}
     ]},
     {provider:'openai', name: "OpenAI", models:[
         {id: 'openai/gpt-4o-mini', name: 'GPT-4o-mini', disabled:true},

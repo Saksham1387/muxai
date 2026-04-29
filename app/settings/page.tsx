@@ -40,6 +40,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { getFileIcon } from '@/components/chat'
 
 const TABS = [
   'Account',
@@ -97,8 +98,6 @@ export default function SettingsPage() {
   const [attachmentsProfileId, setAttachmentsProfileId] = useState<string | null>(null)
   const [selectedAttIds, setSelectedAttIds] = useState<Set<string>>(new Set())
   const [deleteAttDialogOpen, setDeleteAttDialogOpen] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
   const { theme, setTheme } = useTheme()
 
   const { data: profiles } = trpc.profile.listProfiles.useQuery(undefined, {
@@ -179,6 +178,16 @@ export default function SettingsPage() {
       setAttachmentsProfileId(profiles[0].id)
     }
   }, [profiles, attachmentsProfileId])
+
+  const historyProfileName = useMemo(() =>
+    profiles?.find(p => p.id === historyProfileId)?.name || 'Default',
+    [profiles, historyProfileId]
+  )
+
+  const attachmentsProfileName = useMemo(() =>
+    profiles?.find(p => p.id === attachmentsProfileId)?.name || 'Default',
+    [profiles, attachmentsProfileId]
+  )
 
   const createProfile = trpc.profile.createProfile.useMutation({
     onSuccess: (newProfile) => {
@@ -321,16 +330,6 @@ export default function SettingsPage() {
     if (days < 30) return `${Math.floor(days / 7)} week${Math.floor(days / 7) > 1 ? 's' : ''} ago`
     return `${months} month${months > 1 ? 's' : ''} ago`
   }
-
-  const historyProfileName = useMemo(() =>
-    profiles?.find(p => p.id === historyProfileId)?.name || 'Default',
-    [profiles, historyProfileId]
-  )
-
-  const attachmentsProfileName = useMemo(() =>
-    profiles?.find(p => p.id === attachmentsProfileId)?.name || 'Default',
-    [profiles, attachmentsProfileId]
-  )
 
   function getFileIcon(mimeType: string) {
     if (mimeType.startsWith('image/')) return <ImageIcon className="w-4 h-4" />
@@ -927,15 +926,7 @@ export default function SettingsPage() {
                         </button>
                       </div>
                       <div className="w-8 shrink-0 text-muted-foreground">
-                        {att.mimeType.startsWith('image/') ? (
-                          <img
-                            src={att.url}
-                            alt={att.fileName}
-                            className="w-7 h-7 rounded object-cover border border-border/50"
-                          />
-                        ) : (
-                          getFileIcon(att.mimeType)
-                        )}
+                        <AttachmentThumbnail att={att} />
                       </div>
                       <div className="flex-1 min-w-0 pl-2">
                         <span className="text-sm font-medium truncate block">{att.fileName}</span>
@@ -1058,4 +1049,24 @@ export default function SettingsPage() {
       </Dialog>
     </div>
   )
+}
+
+
+function AttachmentThumbnail({ att }: { att: ProfileAttachment }) {
+  const { data } = trpc.attachment.getSignedUrl.useQuery(
+    { key: att.key },
+    { staleTime: 50 * 60 * 1000, enabled: !!att.key }
+  )
+
+  if (att.mimeType.startsWith('image/') && data?.url) {
+    return (
+      <img
+        src={data.url}
+        alt={att.fileName}
+        className="w-7 h-7 rounded object-cover border border-border/50"
+      />
+    )
+  }
+
+  return <span>{getFileIcon(att.mimeType)}</span>
 }
