@@ -20,7 +20,6 @@ import {
   Film,
   Music,
   Download,
-  Upload,
 } from 'lucide-react'
 import { DEFAULT_MODEL } from '@/lib/config'
 import { trpc } from '@/server/client-trpc'
@@ -108,6 +107,10 @@ export default function SettingsPage() {
     { profileId: historyProfileId! },
     { enabled: !!historyProfileId && activeTab === 'History' }
   )
+
+  if(!session){
+    router.push("/")
+  }
 
   const deleteMultiple = trpc.conversation.deleteMultiple.useMutation({
     onSuccess: () => {

@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/s
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { trpc } from '@/server/client-trpc'
+import { useSession } from 'next-auth/react'
 
 export default function ChatPage() {
   const params = useParams()
@@ -13,9 +14,14 @@ export default function ChatPage() {
   const [activeConversation, setActiveConversation] = useState<string | null>(conversationId)
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null)
   const utils = trpc.useUtils()
+  const {data: session} = useSession();
 
   const { data: profiles } = trpc.profile.listProfiles.useQuery()
 
+  if(!session){
+    router.push("/")
+  }
+  
   useEffect(() => {
     if (profiles && profiles.length > 0 && !activeProfileId) {
       setActiveProfileId(profiles[0].id)

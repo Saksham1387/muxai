@@ -8,7 +8,6 @@ import { AuthProvider } from "@/components/providers/auth-provider"
 import { ThemeProvider } from "@/components/providers/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 
-
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
@@ -17,7 +16,7 @@ export const metadata: Metadata = {
   description: 'Chat with multiple AI models including GPT-4, Claude, and Gemini'
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
